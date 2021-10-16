@@ -283,6 +283,9 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
         // avoid having too many lines (at most 1000)
         if(time - lastTime < 0.001)
             continue;
+        // idk why this happens sometimes
+        if(pct > 1 || pct < 0)
+            continue;
         
         if(!(lastTime < 0))
             createLine(graphContainer->get_transform(), {lastTime, lastPct}, {time, pct});

@@ -205,8 +205,26 @@ MAKE_HOOK_MATCH(ProcessResults, &SoloFreePlayFlowCoordinator::ProcessLevelComple
     
     getLogger().info("Setting level stats");
 
-    levelStatsView->rank->set_text(RankModel::GetRankName(levelCompletionResults->rank));
-    levelStatsView->percent->set_text(Round(levelCompletionResults->rawScore * 100.0 / maxScore, "%"));
+    // calculate rank ourselves because level fails seem to give ranks based on total level score
+    float pct = levelCompletionResults->rawScore * 100.0 / maxScore;
+    std::string rank;
+    if(pct >= 90)
+        rank = "SS";
+    else if(pct >= 80)
+        rank = "S";
+    else if(pct >= 65)
+        rank = "A";
+    else if(pct >= 50)
+        rank = "B";
+    else if(pct >= 35)
+        rank = "C";
+    else if(pct >= 20)
+        rank = "D";
+    else
+        rank = "E";
+
+    levelStatsView->rank->set_text(il2cpp_utils::createcsstr(rank));
+    levelStatsView->percent->set_text(Round(pct, "%"));
     if(levelCompletionResults->fullCombo) {
         levelStatsView->combo->set_text(il2cpp_utils::createcsstr("FC"));
         levelStatsView->combo->set_color(gold);
@@ -248,10 +266,6 @@ MAKE_HOOK_MATCH(ProcessResults, &SoloFreePlayFlowCoordinator::ProcessLevelComple
     levelStatsView->r_postSwing->set_text(Round(tracker.r_postSwing*100 / r_notes, "%"));
     levelStatsView->r_circle->set_fillAmount((tracker.r_cut / r_notes) / 115);
     #pragma endregion
-
-    #pragma region graph
-
-    #pragma endregion
 }
 
 MAKE_HOOK_MATCH(SongStart, &AudioTimeSyncController::Start, void, AudioTimeSyncController* self) {
@@ -288,13 +302,13 @@ MAKE_HOOK_MATCH(NoteCut, &ScoreController::HandleNoteWasCut, void, ScoreControll
 
         tracker.notes++;
         float maxScore = calculateMaxScore(tracker.notes);
-        float pct = self->baseRawScore / maxScore;
+        float pct = tracker.score / maxScore;
         
-        if(pct < tracker.min_pct)
+        if(pct > 0 && pct < tracker.min_pct)
             tracker.min_pct = pct;
-        if(pct > tracker.max_pct)
+        if(pct < 1 && pct > tracker.max_pct)
             tracker.max_pct = pct;
-        getLogger().info("Score:%i, notes: %i, percent: %.2f, time: %.2f", self->baseRawScore, tracker.notes, pct, time);
+        // getLogger().info("Score:%i, notes: %i, percent: %.2f, time: %.2f", self->baseRawScore, tracker.notes, pct, time);
 
         percents.push_back(std::make_pair(time, pct));
 
@@ -314,6 +328,9 @@ MAKE_HOOK_MATCH(NoteCut, &ScoreController::HandleNoteWasCut, void, ScoreControll
         tracker.l_preSwing += beforeCutRating;
     else
         tracker.r_preSwing += beforeCutRating;
+    
+    if(beforeCutRating > 1)
+        swing->beforeCutRating = 1;
 }
 
 MAKE_HOOK_MATCH(NoteMiss, &ScoreController::HandleNoteWasMissed, void, ScoreController* self, NoteController* noteController) {
@@ -326,19 +343,19 @@ MAKE_HOOK_MATCH(NoteMiss, &ScoreController::HandleNoteWasMissed, void, ScoreCont
 
     tracker.notes++;
     float maxScore = calculateMaxScore(tracker.notes);
-    float pct = self->baseRawScore / maxScore;
+    float pct = tracker.score / maxScore;
 
-    if(pct < tracker.min_pct)
+    if(pct > 0 && pct < tracker.min_pct)
         tracker.min_pct = pct;
-    if(pct > tracker.max_pct)
+    if(pct < 1 && pct > tracker.max_pct)
         tracker.max_pct = pct;
-    getLogger().info("Score:%i, notes: %i, percent: %.2f, time: %.2f", self->baseRawScore, tracker.notes, pct, time);
+    // getLogger().info("Score:%i, notes: %i, percent: %.2f, time: %.2f", self->baseRawScore, tracker.notes, pct, time);
 
     percents.push_back(std::make_pair(time, pct));
 }
 
 MAKE_HOOK_MATCH(AddScore, &ScoreController::HandleCutScoreBufferDidFinish, void, ScoreController* self, CutScoreBuffer* cutScoreBuffer) {    
-    int cutScore = cutScoreBuffer->get_scoreWithMultiplier() / cutScoreBuffer->get_multiplier();
+    int cutScore = cutScoreBuffer->get_scoreWithMultiplier();
     
     AddScore(self, cutScoreBuffer);
     
@@ -346,14 +363,16 @@ MAKE_HOOK_MATCH(AddScore, &ScoreController::HandleCutScoreBufferDidFinish, void,
     float time = self->audioTimeSyncController->get_songTime();
 
     tracker.notes++;
+    // I think that using self->baseRawScore might cause issues if two cuts happen too close to each other
+    tracker.score += cutScore;
     float maxScore = calculateMaxScore(tracker.notes);
-    float pct = self->baseRawScore / maxScore;
+    float pct = tracker.score / maxScore;
 
-    if(pct < tracker.min_pct)
+    if(pct > 0 && pct < tracker.min_pct)
         tracker.min_pct = pct;
-    if(pct > tracker.max_pct)
+    if(pct < 1 && pct > tracker.max_pct)
         tracker.max_pct = pct;
-    getLogger().info("Score:%i, notes: %i, percent: %.2f, time: %.2f", self->baseRawScore, tracker.notes, pct, time);
+    // getLogger().info("Score:%i, notes: %i, percent: %.2f, time: %.2f", self->baseRawScore, tracker.notes, pct, time);
 
     percents.push_back(std::make_pair(time, pct));
 }
@@ -362,9 +381,6 @@ MAKE_HOOK_MATCH(AngleData, &SaberSwingRatingCounter::ProcessNewData, void, Saber
     bool alreadyCut = self->notePlaneWasCut;
     
     AngleData(self, newData, prevData, prevDataAreValid);
-
-    if(!self->notePlaneWasCut)
-        return;
 
     if(swingMap.count(self) == 0)
         return;
@@ -386,6 +402,11 @@ MAKE_HOOK_MATCH(AngleData, &SaberSwingRatingCounter::ProcessNewData, void, Saber
         else
             tracker.r_postSwing += SaberSwingRating::AfterCutStepRating(newData.segmentAngle, num);
     }
+
+    // avoid resetting the beforeCutRating until after the note has been cut so that the NoteCut hook can add it
+    // however, if the note finishes without ever cutting the plane, it still needs to be processed
+    if(!self->notePlaneWasCut && !self->finished)
+        return;
 
     // run only when finishing
     if(self->finished) {

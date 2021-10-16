@@ -17,7 +17,7 @@ Logger& getLogger();
 void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling);
 
 struct Tracker {
-    int pauses, l_notes, r_notes, notes;
+    int pauses, l_notes, r_notes, notes, score;
     float min_pct, max_pct, song_time,
     l_cut, l_beforeCut, l_accuracy, l_afterCut, l_speed, l_preSwing, l_postSwing,
     r_cut, r_beforeCut, r_accuracy, r_afterCut, r_speed, r_preSwing, r_postSwing;
