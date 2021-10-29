@@ -13,17 +13,29 @@
 Logger& getLogger();
 
 #include "HMUI/ViewController.hpp"
+#include "System/DateTime.hpp"
 
 void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling);
 
 struct Tracker {
-    int pauses, l_notes, r_notes, notes, score;
+    int score, notes, combo, pauses, misses, l_notes, r_notes;
     float min_pct, max_pct, song_time,
-    l_cut, l_beforeCut, l_accuracy, l_afterCut, l_speed, l_preSwing, l_postSwing,
-    r_cut, r_beforeCut, r_accuracy, r_afterCut, r_speed, r_preSwing, r_postSwing;
+    l_cut, l_beforeCut, l_accuracy, l_afterCut, l_speed, l_distance, l_preSwing, l_postSwing,
+    r_cut, r_beforeCut, r_accuracy, r_afterCut, r_speed, r_distance, r_preSwing, r_postSwing;
+    std::string date;
 };
 extern Tracker tracker;
+
+#include "GlobalNamespace/IDifficultyBeatmap.hpp"
+
+extern ModInfo modInfo;
+void addDataToFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
+void getDataFromFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
+void deleteDataFromFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
+bool isInFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
 
 #include <vector>
 
 extern std::vector<std::pair<float, float>> percents;
+
+int calculateMaxScore(int blockCount);

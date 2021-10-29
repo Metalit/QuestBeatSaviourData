@@ -1,26 +1,72 @@
 #include "ModConfig.hpp"
 #include "UI.hpp"
+#include "sprites.hpp"
 
 #include "questui/shared/BeatSaberUI.hpp"
+
+#include "HMUI/ViewController_AnimationType.hpp"
+
+#include "GlobalNamespace/IPreviewBeatmapLevel.hpp"
+#include "GlobalNamespace/BeatmapDifficulty.hpp"
+#include "GlobalNamespace/PlayerDataModel.hpp"
+#include "GlobalNamespace/PlayerData.hpp"
+#include "GlobalNamespace/ColorSchemesSettings.hpp"
+#include "GlobalNamespace/ColorScheme.hpp"
+#include "GlobalNamespace/LeaderboardViewController.hpp"
+
+#include "System/Threading/CancellationToken.hpp"
+#include "System/Threading/Tasks/Task_1.hpp"
 
 #include "UnityEngine/UI/Image_origin360.hpp"
 #include "UnityEngine/Resources.hpp"
 #include "UnityEngine/Color.hpp"
 #include "UnityEngine/Material.hpp"
 
+#include <iomanip>
+#include <sstream>
+
 DEFINE_TYPE(BSDUI, LevelStats);
 DEFINE_TYPE(BSDUI, ScoreGraph);
 
 using namespace BSDUI;
 using namespace QuestUI;
+using namespace GlobalNamespace;
 
-#define ANCHOR(component, xmin, ymin, xmax, ymax) \
-component->get_rectTransform()->set_anchorMin({xmin, ymin}); \
-component->get_rectTransform()->set_anchorMax({xmax, ymax});
+#pragma region helpers
+#define ANCHOR(component, xmin, ymin, xmax, ymax) auto component##_rect = reinterpret_cast<UnityEngine::RectTransform*>(component->get_transform()); \
+component##_rect->set_anchorMin({xmin, ymin}); \
+component##_rect->set_anchorMax({xmax, ymax});
 
-static UnityEngine::Sprite* WhiteSprite() {
-    static auto whiteSprite = QuestUI::BeatSaberUI::Base64ToSprite("/9j/4AAQSkZJRgABAQEAwADAAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAEAAAAAAAD/2wBDAAIBAQIBAQICAgICAgICAwUDAwMDAwYEBAMFBwYHBwcGBwcICQsJCAgKCAcHCg0KCgsMDAwMBwkODw0MDgsMDAz/2wBDAQICAgMDAwYDAwYMCAcIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAz/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKAP/2Q==");
-    return whiteSprite;
+int calculateMaxScore(int blockCount) {
+    int maxScore;
+    if(blockCount < 14) {
+        if (blockCount == 1) {
+            maxScore = 115;
+        } else if (blockCount < 5) {
+            maxScore = (blockCount - 1) * 230 + 115;
+        } else {
+            maxScore = (blockCount - 5) * 460 + 1035;
+        }
+    } else {
+        maxScore = (blockCount - 13) * 920 + 4715;
+    }
+    return maxScore;
+}
+
+Il2CppString* Round(float num, std::string_view extra = "") {
+    int precision = getModConfig().Decimals.GetValue();
+
+    std::stringstream out;
+    out << std::fixed << std::setprecision(precision) << num;
+    out << extra;
+
+    std::string s = out.str();
+    if(getModConfig().Commas.GetValue()) {
+        int i = s.find('.');
+        if(i > 0)
+            s[i] = ',';
+    }
+    return il2cpp_utils::createcsstr(s);
 }
 
 HMUI::ImageView* anchorImage(UnityEngine::Transform* parent, UnityEngine::Sprite* sprite, float xmin, float ymin, float xmax, float ymax) {
@@ -51,19 +97,32 @@ UnityEngine::GameObject* anchorContainer(UnityEngine::Transform* parent, float x
     return go;
 }
 
+#define graphScale 66
+#define graphLength 1.7
+UnityEngine::UI::Image* createLine(UnityEngine::Transform* parent, UnityEngine::Vector2 a, UnityEngine::Vector2 b) {
+    a.x *= graphLength;
+    b.x *= graphLength;
+
+    float dist = UnityEngine::Vector2::Distance(a, b);
+    UnityEngine::Vector2 dir = (b - a).get_normalized();
+    
+    UnityEngine::UI::Image* image = BeatSaberUI::CreateImage(parent, WhiteSprite(), (a + dir * dist * 0.5)*graphScale, {dist*graphScale, 0.3});
+    ANCHOR(image, 0, 0, 0, 0);
+
+    // UnityEngine::RectTransform* rect = reinterpret_cast<UnityEngine::RectTransform*>(image->get_transform());
+    image->get_transform()->set_localEulerAngles({0, 0, (float)(atan2(dir.y, dir.x) * 57.29578)}); // radians to degrees
+
+    return image;
+}
+#pragma endregion
+
 void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
     if(!firstActivation) return;
 
     getLogger().info("Constructing level stats menu");
 
-    auto rect = reinterpret_cast<HMUI::ViewController*>(this)->get_rectTransform();
-
-    auto circleSprite = ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Sprite*>(), [](UnityEngine::Sprite* x){
-        return to_utf8(csstrtostr(x->get_name())) == "Circle";
-    });
-
     #pragma region songInfo
-    auto song = anchorContainer(rect, 0, 0.75, 1, 1);
+    auto song = anchorContainer(get_transform(), 0, 0.75, 1, 1);
     
     songCover = anchorImage(song->get_transform(), WhiteSprite(), 0.01, 0.05, 0.175, 0.95);
     auto songInfo = anchorContainer(song->get_transform(), 0.44, 0.05, 1, 0.95);
@@ -85,10 +144,37 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     songDifficulty->set_alignment(TMPro::TextAlignmentOptions::MidlineLeft);
     #pragma endregion
 
+    #pragma region playDetailsMenu
+    detailsSpecifics = anchorContainer(get_transform(), 0.1, 0.77, 0.9, 1);// find round background
+    auto sprite = ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Sprite*>(), [](UnityEngine::Sprite* x){ 
+        return to_utf8(csstrtostr(x->get_name())) == "RoundRect10";
+    });
+    auto img = anchorImage(detailsSpecifics->get_transform(), sprite, 0.28, 0.565, 0.9, 1);
+    img->skew = 0.18;
+    img->gradient = true;
+    img->set_color0({1, 1, 1, 1});
+    img->set_color1({1, 1, 1, 0});
+    img->set_color({1, 1, 1, 0.2});
+    img->set_type(1);
+
+    anchorText(detailsSpecifics->get_transform(), "SCORE DETAILS", 0.3, 0.53, 0.7, 1)->set_fontSize(5.65);
+
+    date = anchorText(detailsSpecifics->get_transform(), "Date Played - N/A", 0, 0, 1, 0.304);
+    date->set_fontSize(5);
+    
+    auto backButton = BeatSaberUI::CreateUIButton(detailsSpecifics->get_transform(), "", "BackButton", [this](){
+        levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
+        this->get_gameObject()->set_active(false);
+    });
+    ANCHOR(backButton, 0.58, 0.565, 0.58, 1)
+    reinterpret_cast<UnityEngine::RectTransform*>(backButton->get_transform())->set_sizeDelta({12, 2.5});
+    backButton->get_gameObject()->set_name(il2cpp_utils::createcsstr("BSDUIBackButton"));
+    #pragma endregion
+
     #pragma region globalStats
     getLogger().info("Constructing global stats");
 
-    auto globalStats = anchorContainer(rect, 0, 0.61, 1, 0.74);
+    auto globalStats = anchorContainer(get_transform(), 0, 0.61, 1, 0.74);
     top_line = anchorImage(globalStats->get_transform(), WhiteSprite(), 0, 0.97, 1, 1);
     bottom_line = anchorImage(globalStats->get_transform(), WhiteSprite(), 0, 0, 1, 0.03);
 
@@ -110,10 +196,9 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     #pragma endregion
 
     #pragma region leftSaber
-    auto leftSaber = anchorContainer(rect, 0.07, 0, 0.47, 0.6);
+    auto leftSaber = anchorContainer(get_transform(), 0.07, 0, 0.47, 0.6);
 
-    l_circle = BeatSaberUI::CreateImage(leftSaber->get_transform(), circleSprite, {0, 0}, {0, 0});
-    l_circle->set_overrideSprite(circleSprite);
+    l_circle = BeatSaberUI::CreateImage(leftSaber->get_transform(), CircleSprite(), {0, 0}, {0, 0});
     l_circle->set_preserveAspect(true);
     l_circle->get_transform()->set_localScale(l_circle->get_transform()->get_localScale() * 1.55);
     l_circle->set_type(UnityEngine::UI::Image::Type::Filled);
@@ -145,13 +230,12 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     l_postSwing->set_fontSize(5);
     #pragma endregion
     
-    anchorImage(rect, WhiteSprite(), 0.498, 0.05, 0.502, 0.6);
+    anchorImage(get_transform(), WhiteSprite(), 0.498, 0.05, 0.502, 0.6);
 
     #pragma region rightSaber
-    auto rightSaber = anchorContainer(rect, 0.53, 0, 0.93, 0.6);
+    auto rightSaber = anchorContainer(get_transform(), 0.53, 0, 0.93, 0.6);
 
-    r_circle = BeatSaberUI::CreateImage(rightSaber->get_transform(), circleSprite, {0, 0}, {0, 0});
-    r_circle->set_overrideSprite(circleSprite);
+    r_circle = BeatSaberUI::CreateImage(rightSaber->get_transform(), CircleSprite(), {0, 0}, {0, 0});
     r_circle->set_preserveAspect(true);
     r_circle->get_transform()->set_localScale(r_circle->get_transform()->get_localScale() * 1.55);
     r_circle->set_type(UnityEngine::UI::Image::Type::Filled);
@@ -183,10 +267,11 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     r_postSwing->set_fontSize(5);
     #pragma endregion
 
-    getLogger().info("Menu finished");
+    getLogger().info("Level stats finished");
 }
 
 void LevelStats::setColors(UnityEngine::Color leftColor, UnityEngine::Color rightColor) {
+    // getLogger().info("Setting UI colors");
     l_cut->set_color(leftColor);
     l_beforeCut->set_color(leftColor);
     l_afterCut->set_color(leftColor);
@@ -208,23 +293,147 @@ void LevelStats::setColors(UnityEngine::Color leftColor, UnityEngine::Color righ
     r_circle->set_color(rightColor);
 }
 
-static const float graphScale = 66;
-static const float graphLength = 1.7;
+static const UnityEngine::Color expertPlus = UnityEngine::Color(0.5607843399, 0.2823529541, 0.8588235378, 1),
+expert = UnityEngine::Color(0.7490196228, 0.7490196228, 0.2588235438, 1),
+hard = UnityEngine::Color(1, 0.6470588446, 0, 1),
+normal = UnityEngine::Color(0.3490196168, 0.6901960969, 0.9568627477, 1),
+easy = UnityEngine::Color(0.2352941185, 0.7019608021, 0.4431372583, 1),
+gold = UnityEngine::Color(0.9294117689, 0.9294117689, 0.4039215744, 1);
 
-UnityEngine::UI::Image* createLine(UnityEngine::Transform* parent, UnityEngine::Vector2 a, UnityEngine::Vector2 b) {
-    a.x *= graphLength;
-    b.x *= graphLength;
+void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
+    get_transform()->set_localScale({1, 1, 1});
+    get_gameObject()->set_active(true);
+    // get colors
+    auto playerData = UnityEngine::Resources::FindObjectsOfTypeAll<PlayerDataModel*>()->get(0)->playerData;
+    auto colors = playerData->colorSchemesSettings->GetSelectedColorScheme();
 
-    float dist = UnityEngine::Vector2::Distance(a, b);
-    UnityEngine::Vector2 dir = (b - a).get_normalized();
+    setColors(colors->saberAColor, colors->saberBColor);
+
+    // get cover image and other level stats
+    IPreviewBeatmapLevel* levelData = reinterpret_cast<IPreviewBeatmapLevel*>(beatmap->get_level());
+    auto cover = levelData->GetCoverImageAsync(System::Threading::CancellationToken::get_None());
+
+    songCover->set_sprite(cover->get_Result());
+    songName->set_text(levelData->get_songName());
+    songAuthor->set_text(levelData->get_songAuthorName());
+    songMapper->set_text(levelData->get_levelAuthorName());
+
+    songCover->get_gameObject()->set_active(resultScreen);
+    songName->get_gameObject()->set_active(resultScreen);
+    songAuthor->get_gameObject()->set_active(resultScreen);
+    songMapper->get_gameObject()->set_active(resultScreen);
     
-    UnityEngine::UI::Image* image = BeatSaberUI::CreateImage(parent, WhiteSprite(), (a + dir * dist * 0.5)*graphScale, {dist*graphScale, 0.3});
-    ANCHOR(image, 0, 0, 0, 0);
+    // parse difficulty name and corresponding color
+    std::string diffName;
+    UnityEngine::Color color;
+    switch(beatmap->get_difficulty()) {
+        case BeatmapDifficulty::Easy:
+            diffName = "Easy";
+            color = easy;
+            break;
+        case BeatmapDifficulty::Normal:
+            diffName = "Normal";
+            color = normal;
+            break;
+        case BeatmapDifficulty::Hard:
+            diffName = "Hard";
+            color = hard;
+            break;
+        case BeatmapDifficulty::Expert:
+            diffName = "Expert";
+            color = expert;
+            break;
+        case BeatmapDifficulty::ExpertPlus:
+            diffName = "Expert+";
+            color = expertPlus;
+            break;
+        default:
+            diffName = "Unknown";
+            color = UnityEngine::Color::get_white();
+    }
+    songDifficulty->set_text(il2cpp_utils::createcsstr(diffName));
+    songDifficulty->set_color(color);
+    songDifficulty->get_gameObject()->set_active(resultScreen);
 
-    // UnityEngine::RectTransform* rect = reinterpret_cast<UnityEngine::RectTransform*>(image->get_transform());
-    image->get_transform()->set_localEulerAngles({0, 0, (float)(atan2(dir.y, dir.x) * 57.29578)}); // radians to degrees
+    date->set_text(il2cpp_utils::createcsstr("Date Played - " + tracker.date));
+    detailsSpecifics->set_active(!resultScreen);
 
-    return image;
+    // avoid division by zero, but don't change the actual tracker
+    int l_notes = tracker.l_notes;
+    if(l_notes < 1)
+        l_notes = 1;
+    int r_notes = tracker.r_notes;
+    if(r_notes < 1)
+        r_notes = 1;
+    
+    #pragma region levelstats
+
+    // calculate rank ourselves because level fails seem to give ranks based on total level score
+    int maxScore = calculateMaxScore(tracker.notes);
+    float pct = tracker.score * 100.0 / maxScore;
+    std::string rankTxt;
+    if(pct >= 90)
+        rankTxt = "SS";
+    else if(pct >= 80)
+        rankTxt = "S";
+    else if(pct >= 65)
+        rankTxt = "A";
+    else if(pct >= 50)
+        rankTxt = "B";
+    else if(pct >= 35)
+        rankTxt = "C";
+    else if(pct >= 20)
+        rankTxt = "D";
+    else
+        rankTxt = "E";
+
+    rank->set_text(il2cpp_utils::createcsstr(rankTxt));
+    percent->set_text(Round(pct, "%"));
+    // set colors and combo to fc if no misses
+    if(tracker.misses == 0) {
+        combo->set_text(il2cpp_utils::createcsstr("FC"));
+        combo->set_color(gold);
+        top_line->set_color(gold);
+        bottom_line->set_color(gold);
+    } else {
+        combo->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.combo)));
+        combo->set_color(UnityEngine::Color::get_white());
+        top_line->set_color(UnityEngine::Color::get_white());
+        bottom_line->set_color(UnityEngine::Color::get_white());
+    }
+    misses->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.misses)));
+    pauses->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.pauses)));
+    if(tracker.l_notes + tracker.r_notes == 0) {
+        tracker = {0};
+    }
+    #pragma endregion
+
+    #pragma region saberpanel
+    // left saber
+    l_cut->set_text(Round(tracker.l_cut / l_notes));
+    l_beforeCut->set_text(Round(tracker.l_beforeCut / l_notes));
+    l_afterCut->set_text(Round(tracker.l_afterCut / l_notes));
+    l_accuracy->set_text(Round(tracker.l_accuracy / l_notes));
+    l_distance->set_text(Round(tracker.l_distance, " m"));
+    l_speed->set_text(Round(tracker.l_speed / l_notes, " Km/h"));
+    l_preSwing->set_text(Round(tracker.l_preSwing*100 / l_notes, "%"));
+    l_postSwing->set_text(Round(tracker.l_postSwing*100 / l_notes, "%"));
+    l_circle->set_fillAmount((tracker.l_cut / l_notes) / 115);
+    
+    // right saber
+    r_cut->set_text(Round(tracker.r_cut / r_notes));
+    r_beforeCut->set_text(Round(tracker.r_beforeCut / r_notes));
+    r_afterCut->set_text(Round(tracker.r_afterCut / r_notes));
+    r_accuracy->set_text(Round(tracker.r_accuracy / r_notes));
+    r_distance->set_text(Round(tracker.r_distance, " m"));
+    r_speed->set_text(Round(tracker.r_speed / r_notes, " Km/h"));
+    r_preSwing->set_text(Round(tracker.r_preSwing*100 / r_notes, "%"));
+    r_postSwing->set_text(Round(tracker.r_postSwing*100 / r_notes, "%"));
+    r_circle->set_fillAmount((tracker.r_cut / r_notes) / 115);
+    #pragma endregion
+    
+    if(getModConfig().Save.GetValue() && resultScreen)
+        addDataToFile(beatmap);
 }
 
 void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {

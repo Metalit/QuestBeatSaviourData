@@ -10,8 +10,7 @@
 #include "config-utils/shared/config-utils.hpp"
 #include "custom-types/shared/register.hpp"
 
-#include "System/Threading/CancellationToken.hpp"
-#include "System/Threading/Tasks/Task_1.hpp"
+#include "TMPro/TextMeshProUGUI.hpp"
 
 #include "HMUI/ViewController_AnimationType.hpp"
 
@@ -28,11 +27,12 @@
 #include "GlobalNamespace/LevelCompletionResults.hpp"
 #include "GlobalNamespace/LevelCompletionResultsHelper.hpp"
 #include "GlobalNamespace/IBeatmapLevel.hpp"
-#include "GlobalNamespace/IDifficultyBeatmap.hpp"
 #include "GlobalNamespace/BeatmapDifficulty.hpp"
 #include "GlobalNamespace/BeatmapData.hpp"
 #include "GlobalNamespace/GameplayModifiers.hpp"
 #include "GlobalNamespace/SinglePlayerLevelSelectionFlowCoordinator.hpp"
+#include "GlobalNamespace/SoloFreePlayFlowCoordinator.hpp"
+#include "GlobalNamespace/PlatformLeaderboardViewController.hpp"
 #include "GlobalNamespace/PauseMenuManager.hpp"
 #include "GlobalNamespace/NoteCutInfo.hpp"
 #include "GlobalNamespace/GameNoteController.hpp"
@@ -42,77 +42,31 @@
 #include "GlobalNamespace/ScoreModel.hpp"
 #include "GlobalNamespace/ScoreController.hpp"
 #include "GlobalNamespace/BladeMovementDataElement.hpp"
-#include "GlobalNamespace/PlayerDataModel.hpp"
-#include "GlobalNamespace/PlayerData.hpp"
-#include "GlobalNamespace/ColorSchemesSettings.hpp"
-#include "GlobalNamespace/ColorScheme.hpp"
 #include "GlobalNamespace/NoteData.hpp"
 #include "GlobalNamespace/AudioTimeSyncController.hpp"
 
 #include "unordered_map"
-#include <iomanip>
-#include <sstream>
 
 using namespace GlobalNamespace;
 
-static ModInfo modInfo;
+ModInfo modInfo;
 DEFINE_CONFIG(ModConfig);
 
 static BSDUI::LevelStats* levelStatsView = nullptr;
 static BSDUI::ScoreGraph* scoreGraphView = nullptr;
 static std::unordered_map<SaberSwingRatingCounter*, NoteCutInfo> swingMap;
-int realRightSaberDistance;
+static UnityEngine::UI::Button* detailsButton;
+float realRightSaberDistance;
 
 Tracker tracker;
 std::vector<std::pair<float, float>> percents;
-
-static const UnityEngine::Color expertPlus = UnityEngine::Color(0.5607843399, 0.2823529541, 0.8588235378, 1),
-expert = UnityEngine::Color(0.7490196228, 0.7490196228, 0.2588235438, 1),
-hard = UnityEngine::Color(1, 0.6470588446, 0, 1),
-normal = UnityEngine::Color(0.3490196168, 0.6901960969, 0.9568627477, 1),
-easy = UnityEngine::Color(0.2352941185, 0.7019608021, 0.4431372583, 1),
-gold = UnityEngine::Color(0.9294117689, 0.9294117689, 0.4039215744, 1);
+SinglePlayerLevelSelectionFlowCoordinator* levelSelectCoordinator;
 
 Logger& getLogger() {
     static Logger* logger = new Logger(modInfo);
     return *logger;
 }
 
-int calculateMaxScore(int blockCount) {
-    int maxScore;
-    if(blockCount < 14) {
-        if (blockCount == 1) {
-            maxScore = 115;
-        } else if (blockCount < 5) {
-            maxScore = (blockCount - 1) * 230 + 115;
-        } else {
-            maxScore = (blockCount - 5) * 460 + 1035;
-        }
-    } else {
-        maxScore = (blockCount - 13) * 920 + 4715;
-    }
-    return maxScore;
-}
-
-Il2CppString* Round(float num, std::string_view extra = "") {
-    int precision = getModConfig().Decimals.GetValue();
-
-    std::stringstream out;
-    out << std::fixed << std::setprecision(precision) << num;
-    out << extra;
-
-    std::string s = out.str();
-    if(getModConfig().Commas.GetValue()) {
-        int i = s.find('.');
-        if(i > 0)
-            s[i] = ',';
-    }
-    return il2cpp_utils::createcsstr(s);
-}
-
-static UnityEngine::Color c32toColor(UnityEngine::Color32 color) {
-    return UnityEngine::Color(color.r / 255.0, color.g / 255.0, color.b / 255.0, color.a / 255.0);
-}
 static UnityEngine::Color32 colorToc32(UnityEngine::Color color) {
     return UnityEngine::Color32(color.r * 255, color.g * 255, color.b * 255, color.a * 255);
 }
@@ -139,133 +93,67 @@ MAKE_HOOK_MATCH(ProcessResults, &SoloFreePlayFlowCoordinator::ProcessLevelComple
     if(!getModConfig().ShowFail.GetValue() && levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Failed)
         return;
 
-    self->SetLeftScreenViewController(levelStatsView, HMUI::ViewController::AnimationType().None);
+    self->SetLeftScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
     
     if(getModConfig().ShowGraph.GetValue())
-        self->SetRightScreenViewController(scoreGraphView, HMUI::ViewController::AnimationType().None);
+        self->SetRightScreenViewController(scoreGraphView, HMUI::ViewController::AnimationType::None);
 
-    #pragma region saberpanel
-    // get colors
-    auto playerData = QuestUI::ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<PlayerDataModel*>())->playerData;
-    auto colors = playerData->colorSchemesSettings->GetSelectedColorScheme();
+    // add completion results to tracker
+    tracker.notes = levelCompletionResults->goodCutsCount + levelCompletionResults->badCutsCount + levelCompletionResults->missedCount;
+    tracker.score = levelCompletionResults->rawScore;
+    tracker.l_distance = levelCompletionResults->leftSaberMovementDistance;
+    tracker.r_distance = realRightSaberDistance;
+    tracker.misses = levelCompletionResults->missedCount;
+    tracker.combo = levelCompletionResults->maxCombo;
 
-    levelStatsView->setColors(colors->saberAColor, colors->saberBColor);
-        
-    getLogger().info("Setting results to UI");
+    auto time = System::DateTime::get_Now().ToLocalTime();
+    tracker.date = to_utf8(csstrtostr(time.ToString(il2cpp_utils::createcsstr("dddd, d MMMM yyyy h:mm tt"))));
 
-    IPreviewBeatmapLevel* levelData = reinterpret_cast<IPreviewBeatmapLevel*>(difficultyBeatmap->get_level());
-
-    getLogger().info("Setting song info");
-
-    auto cover = levelData->GetCoverImageAsync(System::Threading::CancellationToken::get_None());
-
-    levelStatsView->songCover->set_sprite(cover->get_Result());
-    levelStatsView->songName->set_text(levelData->get_songName());
-    levelStatsView->songAuthor->set_text(levelData->get_songAuthorName());
-    levelStatsView->songMapper->set_text(levelData->get_levelAuthorName());
-    std::string diffName;
-    UnityEngine::Color color;
-    switch(difficultyBeatmap->get_difficulty()) {
-        case BeatmapDifficulty::Easy:
-            diffName = "Easy";
-            color = easy;
-            break;
-        case BeatmapDifficulty::Normal:
-            diffName = "Normal";
-            color = normal;
-            break;
-        case BeatmapDifficulty::Hard:
-            diffName = "Hard";
-            color = hard;
-            break;
-        case BeatmapDifficulty::Expert:
-            diffName = "Expert";
-            color = expert;
-            break;
-        case BeatmapDifficulty::ExpertPlus:
-            diffName = "Expert+";
-            color = expertPlus;
-            break;
-        default:
-            diffName = "Unknown";
-            color = UnityEngine::Color::get_white();
-    }
-    levelStatsView->songDifficulty->set_text(il2cpp_utils::createcsstr(diffName));
-    levelStatsView->songDifficulty->set_color(color);
-
-    // get various stats
-    int totalNotes = levelCompletionResults->goodCutsCount + levelCompletionResults->badCutsCount + levelCompletionResults->missedCount;
-    int maxScore = calculateMaxScore(totalNotes);
-    int l_notes = tracker.l_notes;
-    if(l_notes < 1)
-        l_notes = 1;
-    int r_notes = tracker.r_notes;
-    if(r_notes < 1)
-        r_notes = 1;
+    levelStatsView->setText(difficultyBeatmap);
     
-    getLogger().info("Setting level stats");
+    if(getModConfig().Save.GetValue())
+        detailsButton->get_gameObject()->set_active(true);
+}
 
-    // calculate rank ourselves because level fails seem to give ranks based on total level score
-    float pct = levelCompletionResults->rawScore * 100.0 / maxScore;
-    std::string rank;
-    if(pct >= 90)
-        rank = "SS";
-    else if(pct >= 80)
-        rank = "S";
-    else if(pct >= 65)
-        rank = "A";
-    else if(pct >= 50)
-        rank = "B";
-    else if(pct >= 35)
-        rank = "C";
-    else if(pct >= 20)
-        rank = "D";
-    else
-        rank = "E";
+bool flashed = false;
+MAKE_HOOK_MATCH(LevelLeaderboard, &PlatformLeaderboardViewController::SetData, void, PlatformLeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
+    LevelLeaderboard(self, difficultyBeatmap);
 
-    levelStatsView->rank->set_text(il2cpp_utils::createcsstr(rank));
-    levelStatsView->percent->set_text(Round(pct, "%"));
-    if(levelCompletionResults->fullCombo) {
-        levelStatsView->combo->set_text(il2cpp_utils::createcsstr("FC"));
-        levelStatsView->combo->set_color(gold);
-        levelStatsView->top_line->set_color(gold);
-        levelStatsView->bottom_line->set_color(gold);
-    } else {
-        levelStatsView->combo->set_text(il2cpp_utils::createcsstr(std::to_string(levelCompletionResults->maxCombo)));
-        levelStatsView->combo->set_color(UnityEngine::Color::get_white());
-        levelStatsView->top_line->set_color(UnityEngine::Color::get_white());
-        levelStatsView->bottom_line->set_color(UnityEngine::Color::get_white());
+    if(!levelSelectCoordinator) {
+        auto flowCoordinatorArr = UnityEngine::Resources::FindObjectsOfTypeAll<SoloFreePlayFlowCoordinator*>();
+        if(flowCoordinatorArr->Length() < 1)
+            return;
+        levelSelectCoordinator = flowCoordinatorArr->get(0);
     }
-    levelStatsView->misses->set_text(il2cpp_utils::createcsstr(std::to_string(totalNotes - levelCompletionResults->goodCutsCount)));
-    levelStatsView->pauses->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.pauses)));
-    if(l_notes+r_notes == 0) {
-        tracker = {0};
-    }
-
-    getLogger().info("Setting left saber stats");
-
-    levelStatsView->l_cut->set_text(Round(tracker.l_cut / l_notes));
-    levelStatsView->l_beforeCut->set_text(Round(tracker.l_beforeCut / l_notes));
-    levelStatsView->l_afterCut->set_text(Round(tracker.l_afterCut / l_notes));
-    levelStatsView->l_accuracy->set_text(Round(tracker.l_accuracy / l_notes));
-    levelStatsView->l_distance->set_text(Round(levelCompletionResults->leftSaberMovementDistance, " m"));
-    levelStatsView->l_speed->set_text(Round(tracker.l_speed / l_notes, " Km/h"));
-    levelStatsView->l_preSwing->set_text(Round(tracker.l_preSwing*100 / l_notes, "%"));
-    levelStatsView->l_postSwing->set_text(Round(tracker.l_postSwing*100 / l_notes, "%"));
-    levelStatsView->l_circle->set_fillAmount((tracker.l_cut / l_notes) / 115);
-
-    getLogger().info("Setting right saber stats");
     
-    levelStatsView->r_cut->set_text(Round(tracker.r_cut / r_notes));
-    levelStatsView->r_beforeCut->set_text(Round(tracker.r_beforeCut / r_notes));
-    levelStatsView->r_afterCut->set_text(Round(tracker.r_afterCut / r_notes));
-    levelStatsView->r_accuracy->set_text(Round(tracker.r_accuracy / r_notes));
-    levelStatsView->r_distance->set_text(Round(realRightSaberDistance, " m"));
-    levelStatsView->r_speed->set_text(Round(tracker.r_speed / r_notes, " Km/h"));
-    levelStatsView->r_preSwing->set_text(Round(tracker.r_preSwing*100 / r_notes, "%"));
-    levelStatsView->r_postSwing->set_text(Round(tracker.r_postSwing*100 / r_notes, "%"));
-    levelStatsView->r_circle->set_fillAmount((tracker.r_cut / r_notes) / 115);
-    #pragma endregion
+    if(!levelStatsView) {
+        levelStatsView = QuestUI::BeatSaberUI::CreateViewController<BSDUI::LevelStats*>();
+    }
+    levelStatsView->get_gameObject()->set_active(false);
+
+    // if someone could please give me a better solution for the back button, it would be much appreciated
+    if(!flashed) {
+        levelStatsView->get_transform()->set_localScale({0, 0, 0});
+        levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
+        flashed = true;
+    }
+
+    if(!detailsButton) {
+        getLogger().info("Creating details button");
+        detailsButton = QuestUI::BeatSaberUI::CreateUIButton(self->get_transform(), "...", [self](){
+            // getLogger().info("Displaying level stats from file");
+            levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::In);
+            getDataFromFile(self->difficultyBeatmap);
+            levelStatsView->setText(self->difficultyBeatmap, false);
+        });
+        // ui is a war
+        auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
+        rect->set_anchorMin({0.07, 0.1});
+        rect->set_anchorMax({0.07, 0.1});
+        rect->set_sizeDelta({10, 10});
+        detailsButton->GetComponentInChildren<TMPro::TextMeshProUGUI*>()->set_margin({-14.5, 0, 0, 0});
+    }
+    detailsButton->get_gameObject()->set_active(isInFile(difficultyBeatmap));
 }
 
 MAKE_HOOK_MATCH(SongStart, &AudioTimeSyncController::Start, void, AudioTimeSyncController* self) {
@@ -640,6 +528,40 @@ MAKE_HOOK_MATCH(FillImage, &HMUI::ImageView::GenerateFilledSprite, void, HMUI::I
     }
 }
 
+#include "HMUI/NoTransitionsButton.hpp"
+#include "UnityEngine/UI/Selectable_SelectionState.hpp"
+
+MAKE_HOOK_MATCH(ButtonTransition, &HMUI::NoTransitionsButton::DoStateTransition, void, HMUI::NoTransitionsButton* self, UnityEngine::UI::Selectable::SelectionState state, bool instant) {
+    ButtonTransition(self, state, instant);
+
+    if(to_utf8(csstrtostr(self->get_gameObject()->get_name())) != "BSDUIBackButton")
+        return;
+    
+    // set colors for our back button
+    auto bg = self->GetComponentsInChildren<UnityEngine::UI::Image*>()->get(0);
+
+    switch (state) {
+        case 0: // normal
+            bg->set_color({1, 1, 1, 0.2});
+            break;
+        case 1: // highlighted
+            bg->set_color({1, 1, 1, 0.3});
+            break;
+        case 2: // pressed
+            bg->set_color({1, 1, 1, 0.3});
+            break;
+        case 3: // selected
+            bg->set_color({1, 1, 1, 0.3});
+            break;
+        case 4: // disabled
+            bg->set_color({1, 1, 1, 0.1});
+            break;
+        default:
+            bg->set_color({1, 1, 1, 0.2});
+            break;
+    }
+}
+
 extern "C" void setup(ModInfo& info) {
     info.id = ID;
     info.version = VERSION;
@@ -673,5 +595,7 @@ extern "C" void load() {
     INSTALL_HOOK(logger, PreSwingCalc);
     INSTALL_HOOK(logger, MakeCompletionResults);
     INSTALL_HOOK(logger, FillImage);
+    INSTALL_HOOK(logger, LevelLeaderboard);
+    INSTALL_HOOK(logger, ButtonTransition);
     getLogger().info("Installed all hooks!");
 }

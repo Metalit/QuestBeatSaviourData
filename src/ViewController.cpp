@@ -22,5 +22,7 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         AddConfigValueIncrementInt(container->get_transform(), getModConfig().Decimals, 1, 0, 3);
         
         AddConfigValueToggle(container->get_transform(), getModConfig().Commas);
+        
+        AddConfigValueToggle(container->get_transform(), getModConfig().Save);
     }
 }
