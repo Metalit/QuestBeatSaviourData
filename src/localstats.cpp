@@ -10,8 +10,7 @@
 using namespace GlobalNamespace;
 
 ConfigDocument doc;
-rapidjson::Value levelDiffs;
-rapidjson::Value level;
+rapidjson::Value::MemberIterator levelDiffsItr;
 int levelIdx;
 
 // 0: failed to read, 1: failed to find level, 2: failed to find map, 3: success
@@ -33,10 +32,10 @@ int getLevel(IDifficultyBeatmap* beatmap) {
     int difficulty = beatmap->get_difficulty();
     std::string levelID = to_utf8(csstrtostr(reinterpret_cast<IPreviewBeatmapLevel*>(beatmap->get_level())->get_levelID()));
     
-    auto levelItr = doc.FindMember(levelID);
-    if(levelItr == doc.MemberEnd())
+    levelDiffsItr = doc.FindMember(levelID);
+    if(levelDiffsItr == doc.MemberEnd())
         return 1;
-    levelDiffs = levelItr->value.GetArray();
+    auto levelDiffs = levelDiffsItr->value.GetArray();
     levelIdx = -1;
     for(int i = 0; i < levelDiffs.Size(); i++) {
         if(levelDiffs[i].GetObject()["characteristic"].GetString() == characteristic && levelDiffs[i].GetObject()["difficulty"].GetInt() == difficulty) {
@@ -47,12 +46,16 @@ int getLevel(IDifficultyBeatmap* beatmap) {
         return 2;
 
     getLogger().info("Found level in file");
-    level = levelDiffs[levelIdx].GetObject();
     return 3;
 }
 
 bool isInFile(IDifficultyBeatmap* beatmap) {
-    return getLevel(beatmap) == 3;
+    if(getLevel(beatmap) != 3)
+        return false;
+    // use the presence of date as a marker for empty level data
+    auto level = levelDiffsItr->value.GetArray()[levelIdx].GetObject();
+    auto dateItr = level.FindMember("date");
+    return dateItr != level.MemberEnd();
 }
 
 void writeFile() {
@@ -122,16 +125,19 @@ void addDataToFile(IDifficultyBeatmap* beatmap) {
     addTrackerMember(r_postSwing);
     #pragma endregion
 
+    auto levelDiffs = levelDiffsItr->value.GetArray();
     switch (completion) {
         case 1:
+            getLogger().info("Adding level to file");
             doc.AddMember(rapidjson::Value(levelID, allocator).Move(), rapidjson::Value(rapidjson::kArrayType), allocator);
             doc.FindMember(levelID)->value.GetArray().PushBack(v, allocator);
             break;
         case 2:
-            levelDiffs.PushBack(v, allocator);
+            getLogger().info("Adding beatmap to file");
+            levelDiffsItr->value.GetArray().PushBack(v, allocator);
             break;
         case 3:
-            if(level["score"].GetInt() < tracker.score) {
+            if(levelDiffs[levelIdx].GetObject()["score"].GetInt() < tracker.score) {
                 levelDiffs.Erase(levelDiffs.Begin() + levelIdx);
                 levelDiffs.PushBack(v, allocator);
             }
@@ -148,6 +154,7 @@ void getDataFromFile(IDifficultyBeatmap* beatmap) {
     if(getLevel(beatmap) != 3)
         return;
 
+    auto level = levelDiffsItr->value.GetArray()[levelIdx].GetObject();
     #pragma region trackerObject
     addMemberTracker(score);
     addMemberTracker(notes);
@@ -180,6 +187,7 @@ void deleteDataFromFile(IDifficultyBeatmap* beatmap) {
     if(getLevel(beatmap) != 3)
         return;
     
+    auto levelDiffs = levelDiffsItr->value.GetArray();
     levelDiffs.Erase(levelDiffs.Begin() + levelIdx);
 
     writeFile();

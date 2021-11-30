@@ -145,7 +145,8 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     #pragma endregion
 
     #pragma region playDetailsMenu
-    detailsSpecifics = anchorContainer(get_transform(), 0.1, 0.77, 0.9, 1);// find round background
+    detailsSpecifics = anchorContainer(get_transform(), 0.1, 0.77, 0.9, 1);
+    // find round background
     auto sprite = ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Sprite*>(), [](UnityEngine::Sprite* x){ 
         return to_utf8(csstrtostr(x->get_name())) == "RoundRect10";
     });
@@ -169,6 +170,32 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     ANCHOR(backButton, 0.58, 0.565, 0.58, 1)
     reinterpret_cast<UnityEngine::RectTransform*>(backButton->get_transform())->set_sizeDelta({12, 2.5});
     backButton->get_gameObject()->set_name(il2cpp_utils::createcsstr("BSDUIBackButton"));
+    #pragma endregion
+
+    #pragma region overcomplicatedDeleteButton
+    // delete button, mostly copied from songloader, should be in questui as some sort of createIconButton
+    deleteButton = BeatSaberUI::CreateUIButton(get_transform(), "", "PracticeButton", {55, 36}, {10, 10}, [this](){
+        if(lastBeatmap)
+            deleteDataFromFile(lastBeatmap);
+        disableDetailsButton();
+        // close menu
+        levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
+        get_gameObject()->set_active(false);
+    });
+    // as fern would say, yeet the text (and a few other things)
+    auto contentTransform = deleteButton->get_transform()->Find(il2cpp_utils::newcsstr("Content"));
+    Object::Destroy(contentTransform->Find(il2cpp_utils::newcsstr("Text"))->get_gameObject());
+    Object::Destroy(contentTransform->GetComponent<UnityEngine::UI::LayoutElement*>());
+    Object::Destroy(deleteButton->get_transform()->Find(il2cpp_utils::newcsstr("Underline"))->get_gameObject());
+    // add icon
+    auto iconGameObject = UnityEngine::GameObject::New_ctor(il2cpp_utils::newcsstr("Icon"));
+    auto imageView = iconGameObject->AddComponent<HMUI::ImageView*>();
+    auto iconTransform = imageView->get_rectTransform();
+    iconTransform->SetParent(contentTransform, false);
+    imageView->set_material(ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Material*>(), [](UnityEngine::Material* x) { return to_utf8(csstrtostr(x->get_name())) == "UINoGlow"; }));
+    imageView->set_sprite(DeleteSprite());
+    imageView->set_preserveAspect(true);
+    iconTransform->set_localScale({1.7, 1.7, 1.7});
     #pragma endregion
 
     #pragma region globalStats
@@ -301,6 +328,8 @@ easy = UnityEngine::Color(0.2352941185, 0.7019608021, 0.4431372583, 1),
 gold = UnityEngine::Color(0.9294117689, 0.9294117689, 0.4039215744, 1);
 
 void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
+    // make sure the tracker has data
+
     get_transform()->set_localScale({1, 1, 1});
     get_gameObject()->set_active(true);
     // get colors
@@ -357,6 +386,7 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
 
     date->set_text(il2cpp_utils::createcsstr("Date Played - " + tracker.date));
     detailsSpecifics->set_active(!resultScreen);
+    deleteButton->get_gameObject()->set_active(!resultScreen);
 
     // avoid division by zero, but don't change the actual tracker
     int l_notes = tracker.l_notes;
@@ -431,9 +461,6 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     r_postSwing->set_text(Round(tracker.r_postSwing*100 / r_notes, "%"));
     r_circle->set_fillAmount((tracker.r_cut / r_notes) / 115);
     #pragma endregion
-    
-    if(getModConfig().Save.GetValue() && resultScreen)
-        addDataToFile(beatmap);
 }
 
 void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {

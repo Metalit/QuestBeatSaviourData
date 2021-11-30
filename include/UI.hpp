@@ -27,6 +27,7 @@ DECLARE_CLASS_CODEGEN(BSDUI, LevelStats, HMUI::ViewController,
     *l_cut, *l_beforeCut, *l_accuracy, *l_afterCut, *l_distance, *l_speed, *l_preSwing, *l_postSwing,
     *r_cut, *r_beforeCut, *r_accuracy, *r_afterCut, *r_distance, *r_speed, *r_preSwing, *r_postSwing;
     UnityEngine::GameObject *detailsSpecifics;
+    UnityEngine::UI::Button *deleteButton;
 )
 
 DECLARE_CLASS_CODEGEN(BSDUI, ScoreGraph, HMUI::ViewController,

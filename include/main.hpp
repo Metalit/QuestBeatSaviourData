@@ -13,7 +13,6 @@
 Logger& getLogger();
 
 #include "HMUI/ViewController.hpp"
-#include "System/DateTime.hpp"
 
 void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling);
 
@@ -29,13 +28,14 @@ extern Tracker tracker;
 #include "GlobalNamespace/IDifficultyBeatmap.hpp"
 
 extern ModInfo modInfo;
+extern GlobalNamespace::IDifficultyBeatmap* lastBeatmap;
+extern std::vector<std::pair<float, float>> percents;
+
+void disableDetailsButton();
+
+int calculateMaxScore(int blockCount);
+
 void addDataToFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
 void getDataFromFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
 void deleteDataFromFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
 bool isInFile(GlobalNamespace::IDifficultyBeatmap* beatmap);
-
-#include <vector>
-
-extern std::vector<std::pair<float, float>> percents;
-
-int calculateMaxScore(int blockCount);

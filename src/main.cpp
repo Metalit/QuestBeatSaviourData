@@ -14,6 +14,8 @@
 
 #include "HMUI/ViewController_AnimationType.hpp"
 
+#include "System/DateTime.hpp"
+
 #include "UnityEngine/Sprite.hpp"
 #include "UnityEngine/Resources.hpp"
 #include "UnityEngine/Color.hpp"
@@ -24,6 +26,7 @@
 #include "UnityEngine/Mathf.hpp"
 
 #include "GlobalNamespace/SoloFreePlayFlowCoordinator.hpp"
+#include "GlobalNamespace/PartyFreePlayFlowCoordinator.hpp"
 #include "GlobalNamespace/LevelCompletionResults.hpp"
 #include "GlobalNamespace/LevelCompletionResultsHelper.hpp"
 #include "GlobalNamespace/IBeatmapLevel.hpp"
@@ -31,8 +34,9 @@
 #include "GlobalNamespace/BeatmapData.hpp"
 #include "GlobalNamespace/GameplayModifiers.hpp"
 #include "GlobalNamespace/SinglePlayerLevelSelectionFlowCoordinator.hpp"
-#include "GlobalNamespace/SoloFreePlayFlowCoordinator.hpp"
 #include "GlobalNamespace/PlatformLeaderboardViewController.hpp"
+#include "GlobalNamespace/LeaderboardsModel.hpp"
+#include "GlobalNamespace/LocalLeaderboardViewController.hpp"
 #include "GlobalNamespace/PauseMenuManager.hpp"
 #include "GlobalNamespace/NoteCutInfo.hpp"
 #include "GlobalNamespace/GameNoteController.hpp"
@@ -49,15 +53,16 @@
 
 using namespace GlobalNamespace;
 
-ModInfo modInfo;
 DEFINE_CONFIG(ModConfig);
 
 static BSDUI::LevelStats* levelStatsView = nullptr;
 static BSDUI::ScoreGraph* scoreGraphView = nullptr;
 static std::unordered_map<SaberSwingRatingCounter*, NoteCutInfo> swingMap;
 static UnityEngine::UI::Button* detailsButton;
-float realRightSaberDistance;
+static float realRightSaberDistance;
 
+ModInfo modInfo;
+IDifficultyBeatmap* lastBeatmap;
 Tracker tracker;
 std::vector<std::pair<float, float>> percents;
 SinglePlayerLevelSelectionFlowCoordinator* levelSelectCoordinator;
@@ -74,10 +79,14 @@ static UnityEngine::Vector2 v3tov2(UnityEngine::Vector3 v) {
     return UnityEngine::Vector2(v.x, v.y);
 }
 
-// Hooks
-MAKE_HOOK_MATCH(ProcessResults, &SoloFreePlayFlowCoordinator::ProcessLevelCompletionResultsAfterLevelDidFinish, void, SoloFreePlayFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, IDifficultyBeatmap* difficultyBeatmap, GameplayModifiers* gameplayModifiers, bool practice) {
-    ProcessResults(self, levelCompletionResults, difficultyBeatmap, gameplayModifiers, practice);
+void disableDetailsButton() {
+    if(detailsButton)
+        detailsButton->get_gameObject()->set_active(false);
+}
 
+// Hooks
+// function to avoid duplicate code
+void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, IDifficultyBeatmap* difficultyBeatmap, bool practice) {
     if(!levelStatsView)
         levelStatsView = QuestUI::BeatSaberUI::CreateViewController<BSDUI::LevelStats*>();
     if(!scoreGraphView)
@@ -111,21 +120,37 @@ MAKE_HOOK_MATCH(ProcessResults, &SoloFreePlayFlowCoordinator::ProcessLevelComple
 
     levelStatsView->setText(difficultyBeatmap);
     
-    if(getModConfig().Save.GetValue())
-        detailsButton->get_gameObject()->set_active(true);
+    // don't save on practice or fails
+    if(getModConfig().Save.GetValue() && !practice && levelCompletionResults->levelEndStateType != LevelCompletionResults::LevelEndStateType::Failed) {
+        addDataToFile(difficultyBeatmap);
+        if(detailsButton)
+            detailsButton->get_gameObject()->set_active(true);
+    }
 }
 
-bool flashed = false;
-MAKE_HOOK_MATCH(LevelLeaderboard, &PlatformLeaderboardViewController::SetData, void, PlatformLeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
-    LevelLeaderboard(self, difficultyBeatmap);
+MAKE_HOOK_MATCH(ProcessResultsSolo, &SoloFreePlayFlowCoordinator::ProcessLevelCompletionResultsAfterLevelDidFinish, void, SoloFreePlayFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, IDifficultyBeatmap* difficultyBeatmap, GameplayModifiers* gameplayModifiers, bool practice) {
+    ProcessResultsSolo(self, levelCompletionResults, difficultyBeatmap, gameplayModifiers, practice);
+    processResults(self, levelCompletionResults, difficultyBeatmap, practice);
+}
 
-    if(!levelSelectCoordinator) {
-        auto flowCoordinatorArr = UnityEngine::Resources::FindObjectsOfTypeAll<SoloFreePlayFlowCoordinator*>();
-        if(flowCoordinatorArr->Length() < 1)
-            return;
-        levelSelectCoordinator = flowCoordinatorArr->get(0);
+MAKE_HOOK_MATCH(ProcessResultsParty, &PartyFreePlayFlowCoordinator::ProcessLevelCompletionResultsAfterLevelDidFinish, void, PartyFreePlayFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, IDifficultyBeatmap* difficultyBeatmap, GameplayModifiers* gameplayModifiers, bool practice) {
+    ProcessResultsParty(self, levelCompletionResults, difficultyBeatmap, gameplayModifiers, practice);
+    // don't show if the enter name view will be displayed
+    if(self->WillScoreGoToLeaderboard(levelCompletionResults, LeaderboardsModel::GetLeaderboardID(difficultyBeatmap), practice)) {
+        lastBeatmap = difficultyBeatmap;
+    } else {
+        processResults(self, levelCompletionResults, difficultyBeatmap, practice);
     }
-    
+}
+
+MAKE_HOOK_MATCH(PostNameResultsParty, &PartyFreePlayFlowCoordinator::ProcessScore, void, PartyFreePlayFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, Il2CppString* leaderboardId, Il2CppString* playerName) {
+    PostNameResultsParty(self, levelCompletionResults, leaderboardId, playerName);
+    processResults(self, levelCompletionResults, lastBeatmap, true); // might be failed instead of practice but same effect
+}
+
+// another function for solo/party overlap
+bool flashed = false;
+void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
     if(!levelStatsView) {
         levelStatsView = QuestUI::BeatSaberUI::CreateViewController<BSDUI::LevelStats*>();
     }
@@ -137,22 +162,56 @@ MAKE_HOOK_MATCH(LevelLeaderboard, &PlatformLeaderboardViewController::SetData, v
         levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
         flashed = true;
     }
-
+    
     if(!detailsButton) {
         getLogger().info("Creating details button");
-        detailsButton = QuestUI::BeatSaberUI::CreateUIButton(self->get_transform(), "...", [self](){
+        detailsButton = QuestUI::BeatSaberUI::CreateUIButton(self->get_transform(), "...", [](){
             // getLogger().info("Displaying level stats from file");
+            if(!lastBeatmap)
+                return;
             levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::In);
-            getDataFromFile(self->difficultyBeatmap);
-            levelStatsView->setText(self->difficultyBeatmap, false);
+            getDataFromFile(lastBeatmap);
+            levelStatsView->setText(lastBeatmap, false);
         });
-        // ui is a war
-        auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
-        rect->set_anchorMin({0.07, 0.1});
-        rect->set_anchorMax({0.07, 0.1});
-        rect->set_sizeDelta({10, 10});
+        reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform())->set_sizeDelta({10, 10});
         detailsButton->GetComponentInChildren<TMPro::TextMeshProUGUI*>()->set_margin({-14.5, 0, 0, 0});
     }
+    lastBeatmap = difficultyBeatmap;
+}
+
+MAKE_HOOK_MATCH(LevelLeaderboardSolo, &PlatformLeaderboardViewController::SetData, void, PlatformLeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
+    LevelLeaderboardSolo(self, difficultyBeatmap);
+
+    auto flowCoordinatorArr = UnityEngine::Resources::FindObjectsOfTypeAll<SoloFreePlayFlowCoordinator*>();
+    if(flowCoordinatorArr->Length() < 1)
+        return;
+    levelSelectCoordinator = flowCoordinatorArr->get(0);
+
+    primeLevelStats(self, difficultyBeatmap);
+
+    // ui is a war
+    detailsButton->get_transform()->SetParent(self->get_transform(), false);
+    auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
+    rect->set_anchorMin({0.07, 0.1});
+    rect->set_anchorMax({0.07, 0.1});
+    detailsButton->get_gameObject()->set_active(isInFile(difficultyBeatmap));
+}
+
+MAKE_HOOK_MATCH(LevelLeaderboardParty, &LocalLeaderboardViewController::SetData, void, LocalLeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
+    LevelLeaderboardParty(self, difficultyBeatmap);
+
+    auto flowCoordinatorArr = UnityEngine::Resources::FindObjectsOfTypeAll<PartyFreePlayFlowCoordinator*>();
+    if(flowCoordinatorArr->Length() < 1)
+        return;
+    levelSelectCoordinator = flowCoordinatorArr->get(0);
+
+    primeLevelStats(self, difficultyBeatmap);
+
+    // ui is a war
+    detailsButton->get_transform()->SetParent(self->get_transform(), false);
+    auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
+    rect->set_anchorMin({0.07, 0.85});
+    rect->set_anchorMax({0.07, 0.85});
     detailsButton->get_gameObject()->set_active(isInFile(difficultyBeatmap));
 }
 
@@ -172,6 +231,9 @@ MAKE_HOOK_MATCH(LevelPlay, &SinglePlayerLevelSelectionFlowCoordinator::StartLeve
     percents.clear();
     percents.reserve(self->get_selectedDifficultyBeatmap()->get_beatmapData()->cuttableNotesCount);
     swingMap.clear();
+    // disable score view in level select if needed
+    levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
+    levelStatsView->get_gameObject()->set_active(false);
 }
 
 MAKE_HOOK_MATCH(LevelPause, &PauseMenuManager::ShowMenu, void, PauseMenuManager* self) {
@@ -584,7 +646,9 @@ extern "C" void load() {
     getLogger().info("Installing hooks...");
     LoggerContextObject logger = getLogger().WithContext("load");
     // Install hooks
-    INSTALL_HOOK(logger, ProcessResults);
+    INSTALL_HOOK(logger, ProcessResultsSolo);
+    INSTALL_HOOK(logger, ProcessResultsParty);
+    INSTALL_HOOK(logger, PostNameResultsParty);
     INSTALL_HOOK(logger, SongStart);
     INSTALL_HOOK(logger, LevelPlay);
     INSTALL_HOOK(logger, LevelPause);
@@ -595,7 +659,8 @@ extern "C" void load() {
     INSTALL_HOOK(logger, PreSwingCalc);
     INSTALL_HOOK(logger, MakeCompletionResults);
     INSTALL_HOOK(logger, FillImage);
-    INSTALL_HOOK(logger, LevelLeaderboard);
+    INSTALL_HOOK(logger, LevelLeaderboardSolo);
+    INSTALL_HOOK(logger, LevelLeaderboardParty);
     INSTALL_HOOK(logger, ButtonTransition);
     getLogger().info("Installed all hooks!");
 }
