@@ -27,6 +27,7 @@
 
 #include "GlobalNamespace/SoloFreePlayFlowCoordinator.hpp"
 #include "GlobalNamespace/PartyFreePlayFlowCoordinator.hpp"
+#include "GlobalNamespace/EnterPlayerGuestNameViewController.hpp"
 #include "GlobalNamespace/LevelCompletionResults.hpp"
 #include "GlobalNamespace/LevelCompletionResultsHelper.hpp"
 #include "GlobalNamespace/IBeatmapLevel.hpp"
@@ -63,6 +64,7 @@ static float realRightSaberDistance;
 
 ModInfo modInfo;
 IDifficultyBeatmap* lastBeatmap;
+LevelCompletionResults* lastCompletionResults;
 Tracker tracker;
 std::vector<std::pair<float, float>> percents;
 SinglePlayerLevelSelectionFlowCoordinator* levelSelectCoordinator;
@@ -138,14 +140,15 @@ MAKE_HOOK_MATCH(ProcessResultsParty, &PartyFreePlayFlowCoordinator::ProcessLevel
     // don't show if the enter name view will be displayed
     if(self->WillScoreGoToLeaderboard(levelCompletionResults, LeaderboardsModel::GetLeaderboardID(difficultyBeatmap), practice)) {
         lastBeatmap = difficultyBeatmap;
+        lastCompletionResults = levelCompletionResults;
     } else {
         processResults(self, levelCompletionResults, difficultyBeatmap, practice);
     }
 }
 
-MAKE_HOOK_MATCH(PostNameResultsParty, &PartyFreePlayFlowCoordinator::ProcessScore, void, PartyFreePlayFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, Il2CppString* leaderboardId, Il2CppString* playerName) {
-    PostNameResultsParty(self, levelCompletionResults, leaderboardId, playerName);
-    processResults(self, levelCompletionResults, lastBeatmap, true); // might be failed instead of practice but same effect
+MAKE_HOOK_MATCH(PostNameResultsParty, &EnterPlayerGuestNameViewController::OkButtonPressed, void, EnterPlayerGuestNameViewController* self) {
+    PostNameResultsParty(self);
+    processResults(levelSelectCoordinator, lastCompletionResults, lastBeatmap, false); // guaranteed to be cleared and not in practice mode
 }
 
 // another function for solo/party overlap
