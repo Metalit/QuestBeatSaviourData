@@ -1,5 +1,7 @@
-#include "ModConfig.hpp"
-#include "UI.hpp"
+#include "main.hpp"
+#include "config.hpp"
+#include "stats.hpp"
+#include "localdata.hpp"
 #include "sprites.hpp"
 
 #include "questui/shared/BeatSaberUI.hpp"
@@ -17,7 +19,7 @@
 #include "System/Threading/CancellationToken.hpp"
 #include "System/Threading/Tasks/Task_1.hpp"
 
-#include "UnityEngine/UI/Image_origin360.hpp"
+#include "UnityEngine/UI/Image_Origin360.hpp"
 #include "UnityEngine/Resources.hpp"
 #include "UnityEngine/Color.hpp"
 #include "UnityEngine/Material.hpp"
@@ -25,10 +27,10 @@
 #include <iomanip>
 #include <sstream>
 
-DEFINE_TYPE(BSDUI, LevelStats);
-DEFINE_TYPE(BSDUI, ScoreGraph);
+DEFINE_TYPE(BeatSaviorData, LevelStats);
+DEFINE_TYPE(BeatSaviorData, ScoreGraph);
 
-using namespace BSDUI;
+using namespace BeatSaviorData;
 using namespace QuestUI;
 using namespace GlobalNamespace;
 
@@ -53,20 +55,18 @@ int calculateMaxScore(int blockCount) {
     return maxScore;
 }
 
-Il2CppString* Round(float num, std::string_view extra = "") {
-    int precision = getModConfig().Decimals.GetValue();
-
+std::string Round(float num, std::string_view extra = "") {
     std::stringstream out;
-    out << std::fixed << std::setprecision(precision) << num;
+    out << std::fixed << std::setprecision(globalConfig.NumDecimals) << num;
     out << extra;
 
     std::string s = out.str();
-    if(getModConfig().Commas.GetValue()) {
+    if(globalConfig.UseCommas) {
         int i = s.find('.');
         if(i > 0)
             s[i] = ',';
     }
-    return il2cpp_utils::createcsstr(s);
+    return s;
 }
 
 HMUI::ImageView* anchorImage(UnityEngine::Transform* parent, UnityEngine::Sprite* sprite, float xmin, float ymin, float xmax, float ymax) {
@@ -83,7 +83,7 @@ TMPro::TextMeshProUGUI* anchorText(UnityEngine::Transform* parent, std::string t
 }
 
 UnityEngine::GameObject* anchorContainer(UnityEngine::Transform* parent, float xmin, float ymin, float xmax, float ymax) {
-    static auto name = il2cpp_utils::createcsstr("BSDUIContainer");
+    static ConstString name("BeatSaviorDataContainer");
     auto go = UnityEngine::GameObject::New_ctor(name);
     go->AddComponent<UnityEngine::UI::ContentSizeFitter*>();
     
@@ -148,7 +148,7 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     detailsSpecifics = anchorContainer(get_transform(), 0.1, 0.77, 0.9, 1);
     // find round background
     auto sprite = ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Sprite*>(), [](UnityEngine::Sprite* x){ 
-        return to_utf8(csstrtostr(x->get_name())) == "RoundRect10";
+        return x->get_name() == "RoundRect10";
     });
     auto img = anchorImage(detailsSpecifics->get_transform(), sprite, 0.28, 0.565, 0.9, 1);
     img->skew = 0.18;
@@ -169,30 +169,30 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     });
     ANCHOR(backButton, 0.58, 0.565, 0.58, 1)
     reinterpret_cast<UnityEngine::RectTransform*>(backButton->get_transform())->set_sizeDelta({12, 2.5});
-    backButton->get_gameObject()->set_name(il2cpp_utils::createcsstr("BSDUIBackButton"));
+    backButton->get_gameObject()->set_name("BeatSaviorDataBackButton");
     #pragma endregion
 
     #pragma region overcomplicatedDeleteButton
     // delete button, mostly copied from songloader, should be in questui as some sort of createIconButton
     deleteButton = BeatSaberUI::CreateUIButton(get_transform(), "", "PracticeButton", {55, 36}, {10, 10}, [this](){
         if(lastBeatmap)
-            deleteDataFromFile(lastBeatmap);
+            deleteMap(lastBeatmap);
         disableDetailsButton();
         // close menu
         levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
         get_gameObject()->set_active(false);
     });
     // as fern would say, yeet the text (and a few other things)
-    auto contentTransform = deleteButton->get_transform()->Find(il2cpp_utils::newcsstr("Content"));
-    Object::Destroy(contentTransform->Find(il2cpp_utils::newcsstr("Text"))->get_gameObject());
+    auto contentTransform = deleteButton->get_transform()->Find("Content");
+    Object::Destroy(contentTransform->Find("Text")->get_gameObject());
     Object::Destroy(contentTransform->GetComponent<UnityEngine::UI::LayoutElement*>());
-    Object::Destroy(deleteButton->get_transform()->Find(il2cpp_utils::newcsstr("Underline"))->get_gameObject());
+    Object::Destroy(deleteButton->get_transform()->Find("Underline")->get_gameObject());
     // add icon
-    auto iconGameObject = UnityEngine::GameObject::New_ctor(il2cpp_utils::newcsstr("Icon"));
+    auto iconGameObject = UnityEngine::GameObject::New_ctor("Icon");
     auto imageView = iconGameObject->AddComponent<HMUI::ImageView*>();
     auto iconTransform = imageView->get_rectTransform();
     iconTransform->SetParent(contentTransform, false);
-    imageView->set_material(ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Material*>(), [](UnityEngine::Material* x) { return to_utf8(csstrtostr(x->get_name())) == "UINoGlow"; }));
+    imageView->set_material(ArrayUtil::First(UnityEngine::Resources::FindObjectsOfTypeAll<UnityEngine::Material*>(), [](UnityEngine::Material* x) { return x->get_name() == "UINoGlow"; }));
     imageView->set_sprite(DeleteSprite());
     imageView->set_preserveAspect(true);
     iconTransform->set_localScale({1.7, 1.7, 1.7});
@@ -320,7 +320,7 @@ void LevelStats::setColors(UnityEngine::Color leftColor, UnityEngine::Color righ
     r_circle->set_color(rightColor);
 }
 
-static const UnityEngine::Color expertPlus = UnityEngine::Color(0.5607843399, 0.2823529541, 0.8588235378, 1),
+const UnityEngine::Color expertPlus = UnityEngine::Color(0.5607843399, 0.2823529541, 0.8588235378, 1),
 expert = UnityEngine::Color(0.7490196228, 0.7490196228, 0.2588235438, 1),
 hard = UnityEngine::Color(1, 0.6470588446, 0, 1),
 normal = UnityEngine::Color(0.3490196168, 0.6901960969, 0.9568627477, 1),
@@ -328,12 +328,12 @@ easy = UnityEngine::Color(0.2352941185, 0.7019608021, 0.4431372583, 1),
 gold = UnityEngine::Color(0.9294117689, 0.9294117689, 0.4039215744, 1);
 
 void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
-    // make sure the tracker has data
+    // make sure the currentTracker has data
 
     get_transform()->set_localScale({1, 1, 1});
     get_gameObject()->set_active(true);
     // get colors
-    auto playerData = UnityEngine::Resources::FindObjectsOfTypeAll<PlayerDataModel*>()->get(0)->playerData;
+    auto playerData = UnityEngine::Resources::FindObjectsOfTypeAll<PlayerDataModel*>()[0]->playerData;
     auto colors = playerData->colorSchemesSettings->GetSelectedColorScheme();
 
     setColors(colors->saberAColor, colors->saberBColor);
@@ -380,27 +380,27 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
             diffName = "Unknown";
             color = UnityEngine::Color::get_white();
     }
-    songDifficulty->set_text(il2cpp_utils::createcsstr(diffName));
+    songDifficulty->set_text(diffName);
     songDifficulty->set_color(color);
     songDifficulty->get_gameObject()->set_active(resultScreen);
 
-    date->set_text(il2cpp_utils::createcsstr("Date Played - " + tracker.date));
+    date->set_text("Date Played - " + currentTracker.date);
     detailsSpecifics->set_active(!resultScreen);
     deleteButton->get_gameObject()->set_active(!resultScreen);
 
-    // avoid division by zero, but don't change the actual tracker
-    int l_notes = tracker.l_notes;
+    // avoid division by zero, but don't change the actual currentTracker
+    int l_notes = currentTracker.l_notes;
     if(l_notes < 1)
         l_notes = 1;
-    int r_notes = tracker.r_notes;
+    int r_notes = currentTracker.r_notes;
     if(r_notes < 1)
         r_notes = 1;
     
     #pragma region levelstats
 
     // calculate rank ourselves because level fails seem to give ranks based on total level score
-    int maxScore = calculateMaxScore(tracker.notes);
-    float pct = tracker.score * 100.0 / maxScore;
+    int maxScore = calculateMaxScore(currentTracker.notes);
+    float pct = currentTracker.score * 100.0 / maxScore;
     std::string rankTxt;
     if(pct >= 90)
         rankTxt = "SS";
@@ -417,54 +417,54 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     else
         rankTxt = "E";
 
-    rank->set_text(il2cpp_utils::createcsstr(rankTxt));
+    rank->set_text(rankTxt);
     percent->set_text(Round(pct, "%"));
     // set colors and combo to fc if no misses
-    if(tracker.misses == 0) {
-        combo->set_text(il2cpp_utils::createcsstr("FC"));
+    if(currentTracker.misses == 0) {
+        combo->set_text("FC");
         combo->set_color(gold);
         top_line->set_color(gold);
         bottom_line->set_color(gold);
     } else {
-        combo->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.combo)));
+        combo->set_text(std::to_string(currentTracker.combo));
         combo->set_color(UnityEngine::Color::get_white());
         top_line->set_color(UnityEngine::Color::get_white());
         bottom_line->set_color(UnityEngine::Color::get_white());
     }
-    misses->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.misses)));
-    pauses->set_text(il2cpp_utils::createcsstr(std::to_string(tracker.pauses)));
-    if(tracker.l_notes + tracker.r_notes == 0) {
-        tracker = {0};
+    misses->set_text(std::to_string(currentTracker.misses));
+    pauses->set_text(std::to_string(currentTracker.pauses));
+    if(currentTracker.l_notes + currentTracker.r_notes == 0) {
+        currentTracker = {};
     }
     #pragma endregion
 
     #pragma region saberpanel
     // left saber
-    l_cut->set_text(Round(tracker.l_cut / l_notes));
-    l_beforeCut->set_text(Round(tracker.l_beforeCut / l_notes));
-    l_afterCut->set_text(Round(tracker.l_afterCut / l_notes));
-    l_accuracy->set_text(Round(tracker.l_accuracy / l_notes));
-    l_distance->set_text(Round(tracker.l_distance, " m"));
-    l_speed->set_text(Round(tracker.l_speed / l_notes, " Km/h"));
-    l_preSwing->set_text(Round(tracker.l_preSwing*100 / l_notes, "%"));
-    l_postSwing->set_text(Round(tracker.l_postSwing*100 / l_notes, "%"));
-    l_circle->set_fillAmount((tracker.l_cut / l_notes) / 115);
+    l_cut->set_text(Round(currentTracker.l_cut / l_notes));
+    l_beforeCut->set_text(Round(currentTracker.l_beforeCut / l_notes));
+    l_afterCut->set_text(Round(currentTracker.l_afterCut / l_notes));
+    l_accuracy->set_text(Round(currentTracker.l_accuracy / l_notes));
+    l_distance->set_text(Round(currentTracker.l_distance, " m"));
+    l_speed->set_text(Round(currentTracker.l_speed / l_notes, " Km/h"));
+    l_preSwing->set_text(Round(currentTracker.l_preSwing*100 / l_notes, "%"));
+    l_postSwing->set_text(Round(currentTracker.l_postSwing*100 / l_notes, "%"));
+    l_circle->set_fillAmount((currentTracker.l_cut / l_notes) / 115);
     
     // right saber
-    r_cut->set_text(Round(tracker.r_cut / r_notes));
-    r_beforeCut->set_text(Round(tracker.r_beforeCut / r_notes));
-    r_afterCut->set_text(Round(tracker.r_afterCut / r_notes));
-    r_accuracy->set_text(Round(tracker.r_accuracy / r_notes));
-    r_distance->set_text(Round(tracker.r_distance, " m"));
-    r_speed->set_text(Round(tracker.r_speed / r_notes, " Km/h"));
-    r_preSwing->set_text(Round(tracker.r_preSwing*100 / r_notes, "%"));
-    r_postSwing->set_text(Round(tracker.r_postSwing*100 / r_notes, "%"));
-    r_circle->set_fillAmount((tracker.r_cut / r_notes) / 115);
+    r_cut->set_text(Round(currentTracker.r_cut / r_notes));
+    r_beforeCut->set_text(Round(currentTracker.r_beforeCut / r_notes));
+    r_afterCut->set_text(Round(currentTracker.r_afterCut / r_notes));
+    r_accuracy->set_text(Round(currentTracker.r_accuracy / r_notes));
+    r_distance->set_text(Round(currentTracker.r_distance, " m"));
+    r_speed->set_text(Round(currentTracker.r_speed / r_notes, " Km/h"));
+    r_preSwing->set_text(Round(currentTracker.r_preSwing*100 / r_notes, "%"));
+    r_postSwing->set_text(Round(currentTracker.r_postSwing*100 / r_notes, "%"));
+    r_circle->set_fillAmount((currentTracker.r_cut / r_notes) / 115);
     #pragma endregion
 }
 
 void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
-    getLogger().info("Min percent: %.2f, max percent: %.2f", tracker.min_pct, tracker.max_pct);
+    getLogger().info("Min percent: %.2f, max percent: %.2f", currentTracker.min_pct, currentTracker.max_pct);
 
     if(graphContainer)
         UnityEngine::Object::Destroy(graphContainer);
@@ -474,10 +474,10 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     graphContainer = anchorContainer(rect, 0.05, 0.05, 0.95, 0.87);
     
     int minPct = 0;
-    if(getModConfig().GraphRange.GetValue()) {
+    if(globalConfig.NarrowGraphRange) {
         minPct = 9;
         while(minPct > 0) {
-            if(tracker.min_pct*10 - minPct >= 10 - tracker.max_pct*10)
+            if(currentTracker.min_pct*10 - minPct >= 10 - currentTracker.max_pct*10)
                 break;
             minPct--;
         }
@@ -513,7 +513,7 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     float pct, time, lastPct, lastTime = -1;
     std::sort(percents.begin(), percents.end());
     for(auto i = percents.begin(); i != percents.end(); ++i) {
-        time = i->first / tracker.song_time;
+        time = i->first / currentTracker.song_time;
         pct = (i->second - pctOffset) / (1 - pctOffset);
 
         // avoid having too many lines (at most 1000)
