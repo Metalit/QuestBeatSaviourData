@@ -1,5 +1,6 @@
 #include "main.hpp"
 #include "stats.hpp"
+#include "sprites.hpp"
 #include "localdata.hpp"
 #include "config.hpp"
 
@@ -95,9 +96,9 @@ void disableDetailsButton() {
 // function to avoid duplicate code
 void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, IDifficultyBeatmap* difficultyBeatmap, bool practice) {
     if(!levelStatsView)
-        levelStatsView = QuestUI::BeatSaberUI::CreateViewController<BeatSaviorData::LevelStats*>();
+        levelStatsView = QuestUI::BeatSaberUI::CreateViewController<LevelStats*>();
     if(!scoreGraphView)
-        scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<BeatSaviorData::ScoreGraph*>();
+        scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<ScoreGraph*>();
     
     // exit through pause or something
     if(levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::None)
@@ -138,18 +139,11 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
 // another function for solo/party overlap
 bool flashed = false;
 void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
-    if(!levelStatsView)
-        levelStatsView = QuestUI::BeatSaberUI::CreateViewController<BeatSaviorData::LevelStats*>();
-    levelStatsView->get_gameObject()->set_active(false);
-
-    // if someone could please give me a better solution for the back button, it would be much appreciated
-    if(!flashed) {
-        levelStatsView->get_transform()->set_localScale({0, 0, 0});
-        levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
-        flashed = true;
-    }
+    static ConstString buttonName("BeatSaviorDataDetailsButton");
     
-    if(!detailsButton) {
+    // use button tranform as a marker to construct everything after a soft restart
+    auto buttonTransform = self->get_transform()->Find(buttonName);
+    if(!buttonTransform) {
         getLogger().info("Creating details button");
         detailsButton = QuestUI::BeatSaberUI::CreateUIButton(self->get_transform(), "...", [](){
             // getLogger().info("Displaying level stats from file");
@@ -159,9 +153,29 @@ void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* diffic
             loadMap(lastBeatmap);
             levelStatsView->setText(lastBeatmap, false);
         });
-        reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform())->set_sizeDelta({10, 10});
+        ((UnityEngine::RectTransform*) detailsButton->get_transform())->set_sizeDelta({10, 10});
         detailsButton->GetComponentInChildren<TMPro::TextMeshProUGUI*>()->set_margin({-14.5, 0, 0, 0});
+        detailsButton->get_gameObject()->set_name(buttonName);
+    } else
+        detailsButton = buttonTransform->GetComponent<UnityEngine::UI::Button*>();
+    
+    if(!buttonTransform && detailsButton)
+        ClearSprites();
+    
+    if(!levelStatsView || !buttonTransform) {
+        levelStatsView = QuestUI::BeatSaberUI::CreateViewController<LevelStats*>();
+        scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<ScoreGraph*>();
+        flashed = false;
     }
+    levelStatsView->get_gameObject()->set_active(false);
+
+    // if someone could please give me a better solution for the back button, it would be much appreciated
+    if(!flashed) {
+        levelStatsView->get_transform()->set_localScale({0, 0, 0});
+        levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
+        flashed = true;
+    }
+
     lastBeatmap = difficultyBeatmap;
 }
 
@@ -239,7 +253,8 @@ MAKE_HOOK_MATCH(LevelPlay, &SinglePlayerLevelSelectionFlowCoordinator::StartLeve
     percents.reserve(self->get_selectedDifficultyBeatmap()->get_beatmapData()->cuttableNotesCount);
     swingMap.clear();
     // disable score view in level select if needed
-    levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
+    if(levelSelectCoordinator)
+        levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
     levelStatsView->get_gameObject()->set_active(false);
 }
 
@@ -668,9 +683,9 @@ extern "C" void load() {
     INSTALL_HOOK(logger, NoteMiss);
     INSTALL_HOOK(logger, AddScore);
     INSTALL_HOOK(logger, AngleData);
-    INSTALL_HOOK(logger, PreSwingCalc);
+    INSTALL_HOOK_ORIG(logger, PreSwingCalc);
     INSTALL_HOOK(logger, MakeCompletionResults);
-    INSTALL_HOOK(logger, FillImage);
+    INSTALL_HOOK_ORIG(logger, FillImage);
     INSTALL_HOOK(logger, LevelLeaderboardSolo);
     INSTALL_HOOK(logger, LevelLeaderboardParty);
     INSTALL_HOOK(logger, ButtonTransition);

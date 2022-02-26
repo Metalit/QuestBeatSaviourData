@@ -11,8 +11,10 @@ const std::string whiteSpriteBase64 = "/9j/4AAQSkZJRgABAQEAwADAAAD/4QAiRXhpZgAAT
 "lKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+P"
 "n6/9oADAMBAAIRAxEAPwD9/KKKKAP/2Q==";
 
-UnityEngine::Sprite* WhiteSprite() {
+UnityEngine::Sprite* WhiteSprite(bool reset) {
     static auto whiteSprite = BeatSaberUI::Base64ToSprite(whiteSpriteBase64);
+    if(reset)
+        whiteSprite = BeatSaberUI::Base64ToSprite(whiteSpriteBase64);
     return whiteSprite;
 }
 
@@ -112,8 +114,10 @@ const std::string circleSpriteBase64 = "iVBORw0KGgoAAAANSUhEUgAAAfQAAAH0CAMAAAD8
 "2rVTFDQsJTUaB0Jj05NGUatlXEheEhi0tBkVelOHpqUOMSy3dxtTpz01Demm3dQzE9cfOigsITBYtkenBA2KDSe020xevfp26//CwNeHPiS/6l+aeCLA17o369vH35Ys"
 "zrBXbqGhHbrHhYe0SMyKrpnjKPXc8/Hxj7/XC9HTM/oqMgeEeFh3buFhnTtEhg/2/8H/y9AOocKfMEAAAAASUVORK5CYII=";
 
-UnityEngine::Sprite* CircleSprite() {
+UnityEngine::Sprite* CircleSprite(bool reset) {
     static auto circleSprite = BeatSaberUI::Base64ToSprite(circleSpriteBase64);
+    if(reset)
+        circleSprite = BeatSaberUI::Base64ToSprite(circleSpriteBase64);
     return circleSprite;
 }
 
@@ -165,7 +169,9 @@ static std::string deleteSpriteBase64 = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAAD
 "TlXVNPJimh17TlXVNPJhmT3cwzZ7uYJo93cE0e7qDafZ0B9Ps6Q6m2dMdTLOnO5hmT3cwzZ7uYJo93cE0e7qDafZ0B9Ps6Q6m2dMdTLOnK7w83/8AtgpNGGhS0aoAAAA"
 "ASUVORK5CYII=";
 
-UnityEngine::Sprite* DeleteSprite() {
+UnityEngine::Sprite* DeleteSprite(bool reset) {
     static auto deleteSprite = BeatSaberUI::Base64ToSprite(deleteSpriteBase64);
+    if(reset)
+        deleteSprite = BeatSaberUI::Base64ToSprite(deleteSpriteBase64);
     return deleteSprite;
 }
