@@ -60,7 +60,7 @@ UnityEngine::UI::Button* detailsButton;
 float realRightSaberDistance;
 
 ModInfo modInfo;
-IDifficultyBeatmap* lastBeatmap;
+IDifficultyBeatmap* lastBeatmap = nullptr;
 LevelCompletionResults* lastCompletionResults;
 std::vector<std::pair<float, float>> percents;
 SinglePlayerLevelSelectionFlowCoordinator* levelSelectCoordinator;
@@ -638,12 +638,13 @@ extern "C" void setup(ModInfo& info) {
     else
         ReadFromFile(GetConfigPath(), globalConfig);
     
+    if(!direxists(getDataDir(modInfo)))
+        mkpath(getDataDir(modInfo));
+
     if(!fileexists(GetDataPath()))
-        writefile(GetDataPath(), "{}");
-    else
-        loadData();
+        writefile(GetDataPath(), "null");
+    loadData();
 	
-    getLogger().info("Completed setup!");
 }
 
 extern "C" void load() {

@@ -166,8 +166,7 @@ void saveMap(IDifficultyBeatmap* beatmap, bool alwaysOverride) {
         // add map to level
         level.maps.emplace_back(currentTracker);
         // add level to document and save
-        globalDoc.AddMember(rapidjson::Value(id, allocator).Move(), rapidjson::Value(rapidjson::kArrayType), allocator);
-        globalDoc.FindMember(id)->value.GetArray().PushBack(level.Serialize(allocator), allocator);
+        globalDoc.AddMember(rapidjson::Value(id, allocator).Move(), level.Serialize(allocator), allocator);
         saveData();
     }
 }
@@ -202,8 +201,10 @@ void deleteMap(IDifficultyBeatmap* beatmap) {
         return;
     auto& level = id_levels.find(id)->second;
     for(auto iter = level.maps.begin(); iter != level.maps.end(); iter++) {
-        if(iter->characteristic == characteristic && iter->difficulty == difficulty)
+        if(iter->characteristic == characteristic && iter->difficulty == difficulty) {
             level.maps.erase(iter);
+            break;
+        }
     }
     
     saveLevel(id);

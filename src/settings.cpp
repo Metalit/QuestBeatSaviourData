@@ -31,7 +31,7 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
     BeatSaberUI::AddHoverHint(BeatSaberUI::CreateToggle(container, "Narrow Graph Range", globalConfig.NarrowGraphRange, [](bool enabled) {
         globalConfig.NarrowGraphRange = enabled;
         WriteToFile(GetConfigPath(), globalConfig);
-    }), "Show the stats after passing a level");
+    }), "Automatically set the bounds of the performance graph to fit its contents");
 
     BeatSaberUI::AddHoverHint(BeatSaberUI::CreateIncrementSetting(container, "Decimal Precision", 0, 1, globalConfig.NumDecimals, 0, 3, [](float newValue) {
         globalConfig.NumDecimals = newValue;

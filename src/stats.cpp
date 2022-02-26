@@ -62,9 +62,12 @@ std::string Round(float num, std::string_view extra = "") {
 
     std::string s = out.str();
     if(globalConfig.UseCommas) {
+        getLogger().debug("yo wtf is this crashing");
         int i = s.find('.');
+        getLogger().debug("i: %i", i);
         if(i > 0)
             s[i] = ',';
+        getLogger().debug("it even made it past here");
     }
     return s;
 }
