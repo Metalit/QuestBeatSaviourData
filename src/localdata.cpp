@@ -95,9 +95,12 @@ void loadData() {
     auto json = readfile(GetDataPath());
 
     globalDoc.Parse(json);
-    if(globalDoc.HasParseError() || !globalDoc.IsObject()) {
+    if(globalDoc.HasParseError()) {
         getLogger().error("Could not parse json!");
+        return;
     }
+    if(!globalDoc.IsObject())
+        globalDoc.SetObject();
 
     id_levels.clear();
 
