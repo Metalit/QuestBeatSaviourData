@@ -422,8 +422,8 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
 
     rank->set_text(rankTxt);
     percent->set_text(Round(pct, "%"));
-    // set colors and combo to fc if no misses
-    if(currentTracker.misses == 0) {
+    // set colors and combo to fc if combo matches total notes
+    if(currentTracker.combo == currentTracker.notes) {
         combo->set_text("FC");
         combo->set_color(gold);
         top_line->set_color(gold);
@@ -472,7 +472,7 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     if(graphContainer)
         UnityEngine::Object::Destroy(graphContainer);
 
-    auto rect = reinterpret_cast<HMUI::ViewController*>(this)->get_rectTransform();
+    auto rect = get_rectTransform();
 
     graphContainer = anchorContainer(rect, 0.05, 0.05, 0.95, 0.87);
     

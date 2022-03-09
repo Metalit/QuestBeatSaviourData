@@ -58,7 +58,6 @@ LevelStats* levelStatsView = nullptr;
 ScoreGraph* scoreGraphView = nullptr;
 std::unordered_map<SaberSwingRatingCounter*, NoteCutInfo> swingMap;
 UnityEngine::UI::Button* detailsButton;
-float realRightSaberDistance;
 
 ModInfo modInfo;
 IDifficultyBeatmap* lastBeatmap = nullptr;
@@ -101,7 +100,7 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
         scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<ScoreGraph*>();
     
     // exit through pause or something
-    if(levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::None)
+    if(levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Incomplete)
         return;
 
     if(!globalConfig.ShowOnPass && levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Cleared)
@@ -116,12 +115,17 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
         self->SetRightScreenViewController(scoreGraphView, HMUI::ViewController::AnimationType::None);
 
     // add completion results to currentTracker
-    currentTracker.notes = levelCompletionResults->goodCutsCount + levelCompletionResults->badCutsCount + levelCompletionResults->missedCount;
-    currentTracker.score = levelCompletionResults->rawScore;
     currentTracker.l_distance = levelCompletionResults->leftSaberMovementDistance;
-    currentTracker.r_distance = realRightSaberDistance;
-    currentTracker.misses = levelCompletionResults->missedCount;
+    currentTracker.r_distance = levelCompletionResults->rightSaberMovementDistance;
+    // check note counts
+    int levelNoteCount = levelCompletionResults->goodCutsCount + levelCompletionResults->badCutsCount + levelCompletionResults->missedCount;
+    if(currentTracker.notes != levelNoteCount) {
+        getLogger().info("Note counts did not match!\nTotal notes according to the tracker: %i\nTotal notes according to levelCompletionResults: %i", currentTracker.notes, levelNoteCount);
+        currentTracker.notes = levelNoteCount;
+    }
     currentTracker.combo = levelCompletionResults->maxCombo;
+    // override score with modified score, now that it is no longer being used for the percentage graph
+    currentTracker.score = levelCompletionResults->modifiedScore;
 
     auto time = System::DateTime::get_Now().ToLocalTime();
     currentTracker.date = std::string(time.ToString("dddd, d MMMM yyyy h:mm tt"));
@@ -264,15 +268,25 @@ MAKE_HOOK_MATCH(LevelPause, &PauseMenuManager::ShowMenu, void, PauseMenuManager*
 }
 
 MAKE_HOOK_MATCH(NoteCut, &ScoreController::HandleNoteWasCut, void, ScoreController* self, NoteController* noteController, ByRef<NoteCutInfo> noteCutInfo) {
-    NoteCut(self, noteController, noteCutInfo);
+    // get cut and swing info
+    auto& cutInfo = noteCutInfo.heldRef;
+    auto swing = (SaberSwingRatingCounter*) cutInfo.swingRatingCounter;
+    if(!swing) {
+        NoteCut(self, noteController, noteCutInfo);
+        return;
+    }
     
-    auto cutInfo = noteCutInfo.heldRef;
-
+    // get before cut rating before clamping it
+    float beforeCutRating = swing->beforeCutRating;
+    if(beforeCutRating > 1)
+        swing->beforeCutRating = 1;
+    
     // track bad cuts
     if(!cutInfo.get_allIsOK() && noteController->noteData->colorType != -1) {
         float time = self->audioTimeSyncController->get_songTime();
 
         currentTracker.notes++;
+        currentTracker.misses++;
         float maxScore = calculateMaxScore(currentTracker.notes);
         float pct = currentTracker.score / maxScore;
         
@@ -283,25 +297,20 @@ MAKE_HOOK_MATCH(NoteCut, &ScoreController::HandleNoteWasCut, void, ScoreControll
 
         percents.push_back(std::make_pair(time, pct));
 
+        NoteCut(self, noteController, noteCutInfo);
         return;
     }
 
     // add cutInfo to swing map
-    SaberSwingRatingCounter* swing = reinterpret_cast<SaberSwingRatingCounter*>(cutInfo.swingRatingCounter);
-    if(!swing)
-        return;
-    
     swingMap[swing] = cutInfo;
     
     // track before cut ratings
-    float beforeCutRating = swing->beforeCutRating;
     if(cutInfo.saberType == SaberType::SaberA)
         currentTracker.l_preSwing += beforeCutRating;
     else
         currentTracker.r_preSwing += beforeCutRating;
     
-    if(beforeCutRating > 1)
-        swing->beforeCutRating = 1;
+    NoteCut(self, noteController, noteCutInfo);
 }
 
 MAKE_HOOK_MATCH(NoteMiss, &ScoreController::HandleNoteWasMissed, void, ScoreController* self, NoteController* noteController) {
@@ -313,6 +322,7 @@ MAKE_HOOK_MATCH(NoteMiss, &ScoreController::HandleNoteWasMissed, void, ScoreCont
     float time = self->audioTimeSyncController->get_songTime();
 
     currentTracker.notes++;
+    currentTracker.misses++;
     float maxScore = calculateMaxScore(currentTracker.notes);
     float pct = currentTracker.score / maxScore;
 
@@ -325,16 +335,10 @@ MAKE_HOOK_MATCH(NoteMiss, &ScoreController::HandleNoteWasMissed, void, ScoreCont
 }
 
 MAKE_HOOK_MATCH(AddScore, &ScoreController::HandleCutScoreBufferDidFinish, void, ScoreController* self, CutScoreBuffer* cutScoreBuffer) {    
-    int cutScore = cutScoreBuffer->get_scoreWithMultiplier();
-    
     AddScore(self, cutScoreBuffer);
-    
-    // float time = reinterpret_cast<SaberSwingRatingCounter*>(cutScoreBuffer->saberSwingRatingCounter)->cutTime;
-    float time = self->audioTimeSyncController->get_songTime();
 
     currentTracker.notes++;
-    // I think that using self->baseRawScore might cause issues if two cuts happen too close to each other
-    currentTracker.score += cutScore;
+    currentTracker.score += cutScoreBuffer->get_scoreWithMultiplier();
     float maxScore = calculateMaxScore(currentTracker.notes);
     float pct = currentTracker.score / maxScore;
 
@@ -342,6 +346,8 @@ MAKE_HOOK_MATCH(AddScore, &ScoreController::HandleCutScoreBufferDidFinish, void,
         currentTracker.min_pct = pct;
     if(pct < 1 && pct > currentTracker.max_pct)
         currentTracker.max_pct = pct;
+
+    float time = ((SaberSwingRatingCounter*) cutScoreBuffer->saberSwingRatingCounter)->cutTime;
 
     percents.push_back(std::make_pair(time, pct));
 }
@@ -354,7 +360,7 @@ MAKE_HOOK_MATCH(AngleData, &SaberSwingRatingCounter::ProcessNewData, void, Saber
     if(swingMap.count(self) == 0)
         return;
     
-    auto cutInfo = swingMap[self];
+    auto& cutInfo = swingMap[self];
     bool leftSaber = cutInfo.saberType == SaberType::SaberA;
 
     float num = UnityEngine::Vector3::Angle(newData.segmentNormal, self->cutPlaneNormal);
@@ -379,11 +385,12 @@ MAKE_HOOK_MATCH(AngleData, &SaberSwingRatingCounter::ProcessNewData, void, Saber
 
     // run only when finishing
     if(self->finished) {
+        // get cut score components
         int before, after, accuracy;
         ScoreModel::RawScoreWithoutMultiplier(reinterpret_cast<ISaberSwingRatingCounter*>(self), cutInfo.cutDistanceToCenter, byref(before), byref(after), byref(accuracy));
 
+        // add cut details to tracker now that the cut is finished
         if(leftSaber) {
-            // getLogger().info("Left swing finishing");
             currentTracker.l_notes++;
             currentTracker.l_cut += before + after + accuracy;
             currentTracker.l_beforeCut += before;
@@ -391,7 +398,6 @@ MAKE_HOOK_MATCH(AngleData, &SaberSwingRatingCounter::ProcessNewData, void, Saber
             currentTracker.l_accuracy += accuracy;
             currentTracker.l_speed += cutInfo.saberSpeed;
         } else {
-            // getLogger().info("Right swing finishing");
             currentTracker.r_notes++;
             currentTracker.r_cut += before + after + accuracy;
             currentTracker.r_beforeCut += before;
@@ -399,6 +405,7 @@ MAKE_HOOK_MATCH(AngleData, &SaberSwingRatingCounter::ProcessNewData, void, Saber
             currentTracker.r_accuracy += accuracy;
             currentTracker.r_speed += cutInfo.saberSpeed;
         }
+        // remove from swing map
         swingMap.erase(self);
     }
     // correct for change in ComputeSwingRating
@@ -442,15 +449,9 @@ MAKE_HOOK_MATCH(PreSwingCalc, static_cast<float (SaberMovementData::*)(bool, flo
     return num4;
 }
 
-// fix your game
-MAKE_HOOK_MATCH(MakeCompletionResults, &LevelCompletionResultsHelper::Create, LevelCompletionResults*, int levelNotesCount, ArrayW<BeatmapObjectExecutionRating*> beatmapObjectExecutionRatings, GameplayModifiers* gameplayModifiers, GameplayModifiersModelSO* gameplayModifiersModel, int rawScore, int modifiedScore, int maxCombo, ArrayW<float> saberActivityValues, float leftSaberMovementDistance, float rightSaberMovementDistance, ArrayW<float> handActivityValues, float leftHandMovementDistance, float rightHandMovementDistance, float songDuration, LevelCompletionResults::LevelEndStateType levelEndStateType, LevelCompletionResults::LevelEndAction levelEndAction, float energy, float songTime) {
-    realRightSaberDistance = rightSaberMovementDistance;
-    return MakeCompletionResults(levelNotesCount, beatmapObjectExecutionRatings, gameplayModifiers, gameplayModifiersModel, rawScore, modifiedScore, maxCombo, saberActivityValues, leftSaberMovementDistance, rightSaberMovementDistance, handActivityValues, leftHandMovementDistance, rightHandMovementDistance, songDuration, levelEndStateType, levelEndAction, energy, songTime);
-}
-
 // mfers can't even fill an image on a curved surface
 // override #2
-static void customAddQuad(UnityEngine::UI::VertexHelper* vertexHelper, ArrayW<UnityEngine::Vector3> quadPositions, UnityEngine::Color32 color, ArrayW<UnityEngine::Vector3> quadUVs, float curvedUIRadius) {
+void customAddQuad(UnityEngine::UI::VertexHelper* vertexHelper, ArrayW<UnityEngine::Vector3> quadPositions, UnityEngine::Color32 color, ArrayW<UnityEngine::Vector3> quadUVs, float curvedUIRadius) {
     int currentVertCount = vertexHelper->get_currentVertCount();
     UnityEngine::Vector2 uv = UnityEngine::Vector2(curvedUIRadius, 0);
     for (int i = 0; i < 4; i++) {
@@ -684,7 +685,6 @@ extern "C" void load() {
     INSTALL_HOOK(logger, AddScore);
     INSTALL_HOOK(logger, AngleData);
     INSTALL_HOOK_ORIG(logger, PreSwingCalc);
-    INSTALL_HOOK(logger, MakeCompletionResults);
     INSTALL_HOOK_ORIG(logger, FillImage);
     INSTALL_HOOK(logger, LevelLeaderboardSolo);
     INSTALL_HOOK(logger, LevelLeaderboardParty);
