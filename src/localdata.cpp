@@ -9,6 +9,8 @@
 #define DESERIALIZE_VALUE_NAME(name, jsonType) DESERIALIZE_VALUE(name, name, jsonType)
 DESERIALIZE_METHOD(BeatSaviorData, Tracker,
     DESERIALIZE_VALUE_NAME(score, Int);
+    DESERIALIZE_VALUE_DEFAULT(maxScore, maxScore, Int, -1);
+    DESERIALIZE_VALUE_DEFAULT(fullNotesScore, fullNotesScore, Int, -1);
     DESERIALIZE_VALUE_NAME(notes, Int);
     DESERIALIZE_VALUE_NAME(combo, Int);
     DESERIALIZE_VALUE_NAME(pauses, Int);
@@ -33,12 +35,16 @@ DESERIALIZE_METHOD(BeatSaviorData, Tracker,
     DESERIALIZE_VALUE_NAME(r_postSwing, Float);
     DESERIALIZE_VALUE_NAME(date, String);
     DESERIALIZE_VALUE_NAME(characteristic, String);
+    DESERIALIZE_VALUE_OPTIONAL(modifiers, modifiers, String);
     DESERIALIZE_VALUE_NAME(difficulty, Int);
+    DESERIALIZE_VALUE_DEFAULT(trackerVersion, version, Int, 1);
 )
 
 #define SERIALIZE_VALUE_NAME(name) SERIALIZE_VALUE(name, name)
 SERIALIZE_METHOD(BeatSaviorData, Tracker,
     SERIALIZE_VALUE_NAME(score);
+    SERIALIZE_VALUE_NAME(maxScore);
+    SERIALIZE_VALUE_NAME(fullNotesScore);
     SERIALIZE_VALUE_NAME(notes);
     SERIALIZE_VALUE_NAME(combo);
     SERIALIZE_VALUE_NAME(pauses);
@@ -63,7 +69,9 @@ SERIALIZE_METHOD(BeatSaviorData, Tracker,
     SERIALIZE_VALUE_NAME(r_postSwing);
     SERIALIZE_VALUE_NAME(date);
     SERIALIZE_VALUE_NAME(characteristic);
+    SERIALIZE_VALUE_OPTIONAL(modifiers, modifiers);
     SERIALIZE_VALUE_NAME(difficulty);
+    SERIALIZE_VALUE(trackerVersion, version);
 )
 
 DESERIALIZE_METHOD(BeatSaviorData, Level,

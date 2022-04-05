@@ -21,5 +21,3 @@ extern GlobalNamespace::IDifficultyBeatmap* lastBeatmap;
 extern std::vector<std::pair<float, float>> percents;
 
 void disableDetailsButton();
-
-int calculateMaxScore(int blockCount);

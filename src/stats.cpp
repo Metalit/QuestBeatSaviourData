@@ -39,7 +39,7 @@ using namespace GlobalNamespace;
 component##_rect->set_anchorMin({xmin, ymin}); \
 component##_rect->set_anchorMax({xmax, ymax});
 
-int calculateMaxScore(int blockCount) {
+int calculateOldMaxScore(int blockCount) {
     int maxScore;
     if(blockCount < 14) {
         if (blockCount == 1) {
@@ -53,6 +53,12 @@ int calculateMaxScore(int blockCount) {
         maxScore = (blockCount - 13) * 920 + 4715;
     }
     return maxScore;
+}
+
+inline float safeDiv(float numerator, float denominator) {
+    if(denominator > 0)
+        return numerator / denominator;
+    return 0;
 }
 
 std::string Round(float num, std::string_view extra = "") {
@@ -331,8 +337,6 @@ easy = UnityEngine::Color(0.2352941185, 0.7019608021, 0.4431372583, 1),
 gold = UnityEngine::Color(0.9294117689, 0.9294117689, 0.4039215744, 1);
 
 void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
-    // make sure the currentTracker has data
-
     get_transform()->set_localScale({1, 1, 1});
     get_gameObject()->set_active(true);
     // get colors
@@ -390,19 +394,14 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     date->set_text("Date Played - " + currentTracker.date);
     detailsSpecifics->set_active(!resultScreen);
     deleteButton->get_gameObject()->set_active(!resultScreen);
-
-    // avoid division by zero, but don't change the actual currentTracker
-    int l_notes = currentTracker.l_notes;
-    if(l_notes < 1)
-        l_notes = 1;
-    int r_notes = currentTracker.r_notes;
-    if(r_notes < 1)
-        r_notes = 1;
     
     #pragma region levelstats
 
-    // calculate rank ourselves because level fails seem to give ranks based on total level score
-    int maxScore = calculateMaxScore(currentTracker.notes);
+    int maxScore = currentTracker.maxScore;
+    // <v2 saved data won't have max score, so it will be loaded as -1
+    // thankfully old data is also guaranteed to not have any new notes
+    if(maxScore < 0)
+        maxScore = calculateOldMaxScore(currentTracker.notes);
     float pct = currentTracker.score * 100.0 / maxScore;
     std::string rankTxt;
     if(pct >= 90)
@@ -436,33 +435,32 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     }
     misses->set_text(std::to_string(currentTracker.misses));
     pauses->set_text(std::to_string(currentTracker.pauses));
-    if(currentTracker.l_notes + currentTracker.r_notes == 0) {
-        currentTracker = {};
-    }
     #pragma endregion
 
     #pragma region saberpanel
     // left saber
-    l_cut->set_text(Round(currentTracker.l_cut / l_notes));
-    l_beforeCut->set_text(Round(currentTracker.l_beforeCut / l_notes));
-    l_afterCut->set_text(Round(currentTracker.l_afterCut / l_notes));
-    l_accuracy->set_text(Round(currentTracker.l_accuracy / l_notes));
+    int l_notes = currentTracker.l_notes;
+    l_cut->set_text(Round(safeDiv(currentTracker.l_cut, l_notes)));
+    l_beforeCut->set_text(Round(safeDiv(currentTracker.l_beforeCut, l_notes)));
+    l_afterCut->set_text(Round(safeDiv(currentTracker.l_afterCut, l_notes)));
+    l_accuracy->set_text(Round(safeDiv(currentTracker.l_accuracy, l_notes)));
     l_distance->set_text(Round(currentTracker.l_distance, " m"));
-    l_speed->set_text(Round(currentTracker.l_speed / l_notes, " Km/h"));
-    l_preSwing->set_text(Round(currentTracker.l_preSwing*100 / l_notes, "%"));
-    l_postSwing->set_text(Round(currentTracker.l_postSwing*100 / l_notes, "%"));
-    l_circle->set_fillAmount((currentTracker.l_cut / l_notes) / 115);
+    l_speed->set_text(Round(safeDiv(currentTracker.l_speed, l_notes), " Km/h"));
+    l_preSwing->set_text(Round(safeDiv(currentTracker.l_preSwing * 100, l_notes), "%"));
+    l_postSwing->set_text(Round(safeDiv(currentTracker.l_postSwing * 100, l_notes), "%"));
+    l_circle->set_fillAmount(safeDiv(currentTracker.l_cut, l_notes) / 115);
     
     // right saber
-    r_cut->set_text(Round(currentTracker.r_cut / r_notes));
-    r_beforeCut->set_text(Round(currentTracker.r_beforeCut / r_notes));
-    r_afterCut->set_text(Round(currentTracker.r_afterCut / r_notes));
-    r_accuracy->set_text(Round(currentTracker.r_accuracy / r_notes));
+    int r_notes = currentTracker.r_notes;
+    r_cut->set_text(Round(safeDiv(currentTracker.r_cut, r_notes)));
+    r_beforeCut->set_text(Round(safeDiv(currentTracker.r_beforeCut, r_notes)));
+    r_afterCut->set_text(Round(safeDiv(currentTracker.r_afterCut, r_notes)));
+    r_accuracy->set_text(Round(safeDiv(currentTracker.r_accuracy, r_notes)));
     r_distance->set_text(Round(currentTracker.r_distance, " m"));
-    r_speed->set_text(Round(currentTracker.r_speed / r_notes, " Km/h"));
-    r_preSwing->set_text(Round(currentTracker.r_preSwing*100 / r_notes, "%"));
-    r_postSwing->set_text(Round(currentTracker.r_postSwing*100 / r_notes, "%"));
-    r_circle->set_fillAmount((currentTracker.r_cut / r_notes) / 115);
+    r_speed->set_text(Round(safeDiv(currentTracker.r_speed, r_notes), " Km/h"));
+    r_preSwing->set_text(Round(safeDiv(currentTracker.r_preSwing * 100, r_notes), "%"));
+    r_postSwing->set_text(Round(safeDiv(currentTracker.r_postSwing * 100, r_notes), "%"));
+    r_circle->set_fillAmount(safeDiv(currentTracker.r_cut, r_notes) / 115);
     #pragma endregion
 }
 
@@ -519,8 +517,8 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
         time = i->first / currentTracker.song_time;
         pct = (i->second - pctOffset) / (1 - pctOffset);
 
-        // avoid having too many lines (at most 1000)
-        if(time - lastTime < 0.001)
+        // avoid having too many lines (at most 200)
+        if(time - lastTime < 0.005)
             continue;
         // idk why this happens sometimes
         if(pct > 1 || pct < 0)
