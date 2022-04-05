@@ -1,7 +1,5 @@
 Param(
-    [String]$qmodname="BeatSaviorData",
-    [Parameter(Mandatory=$false)]
-    [Switch]$clean
+    [String]$qmodname="BeatSaviorData"
 )
 
 if ($qmodName -eq "")
@@ -42,12 +40,6 @@ foreach ($lib in $modJson.libraryFiles)
 
 $zip = $qmodName + ".zip"
 $qmod = $qmodName + ".qmod"
-
-if ((-not ($clean.IsPresent)) -and (Test-Path $qmod))
-{
-    echo "Making Clean Qmod"
-    Move-Item $qmod $zip -Force
-}
 
 Compress-Archive -Path $filelist -DestinationPath $zip -Update
 Move-Item $zip $qmod -Force
