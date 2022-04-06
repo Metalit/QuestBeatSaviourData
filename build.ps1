@@ -1,7 +1,19 @@
 Param(
     [Parameter(Mandatory=$false)]
-    [Switch]$clean
+    [Switch] $clean,
+
+    [Parameter(Mandatory=$false)]
+    [Switch] $help
 )
+
+if ($help -eq $true) {
+    Write-Output "`"Build`" - Copiles your mod into a `".so`" or a `".a`" library"
+    Write-Output "`n-- Arguments --`n"
+
+    Write-Output "-Clean `t`t Deletes the `"build`" folder, so that the entire library is rebuilt"
+
+    exit
+}
 
 # if user specified clean, remove all build files
 if ($clean.IsPresent)
@@ -12,16 +24,13 @@ if ($clean.IsPresent)
     }
 }
 
-$NDKPath = Get-Content $PSScriptRoot/ndkpath.txt
 
 if (($clean.IsPresent) -or (-not (Test-Path -Path "build")))
 {
-    $out = new-item -Path build -ItemType Directory
-}
+    new-item -Path build -ItemType Directory
+} 
 
-cd build
+Set-Location build
 & cmake -G "Ninja" -DCMAKE_BUILD_TYPE="RelWithDebInfo" ../
-& cmake --build . -j 8
-$ExitCode = $LastExitCode
-cd ..
-exit $ExitCode
+& cmake --build .
+Set-Location ..
