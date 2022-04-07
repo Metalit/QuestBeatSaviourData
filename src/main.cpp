@@ -7,6 +7,8 @@
 #include "beatsaber-hook/shared/utils/hooking.hpp"
 #include "beatsaber-hook/shared/config/config-utils.hpp"
 
+#include "bs-utils/shared/utils.hpp"
+
 #include "questui/shared/QuestUI.hpp"
 #include "questui/shared/BeatSaberUI.hpp"
 #include "custom-types/shared/register.hpp"
@@ -139,6 +141,9 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
     if(!globalConfig.ShowOnFail && failed)
         return;
 
+    if(levelCompletionResults->multipliedScore == 0)
+        return;
+
     self->SetLeftScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
     
     if(globalConfig.ShowGraph)
@@ -158,7 +163,7 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
     levelStatsView->setText(difficultyBeatmap);
     
     // don't save on practice or fails
-    if(globalConfig.SaveLocally && !practice && !failed) {
+    if(globalConfig.SaveLocally && !practice && !failed && bs_utils::Submission::getEnabled()) {
         saveMap(difficultyBeatmap);
         if(detailsButton)
             detailsButton->get_gameObject()->set_active(true);
