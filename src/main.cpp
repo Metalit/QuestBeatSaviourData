@@ -301,9 +301,13 @@ MAKE_HOOK_MATCH(NoteCut, &CutScoreBuffer::Init, bool, CutScoreBuffer* self, ByRe
 // adds note events to the tracker (cuts, bad cuts, misses)
 MAKE_HOOK_MATCH(NoteEventFinish, &ScoreController::DespawnScoringElement, void, ScoreController* self, ScoringElement* scoringElement) {    
     NoteEventFinish(self, scoringElement);
-    
-    currentTracker.notes++;
-    currentTracker.maxScore = self->immediateMaxPossibleMultipliedScore;
+
+    bool isBomb = scoringElement->get_noteData()->colorType == ColorType::None;
+
+    if(!isBomb) {
+        currentTracker.notes++;
+        currentTracker.maxScore = self->immediateMaxPossibleMultipliedScore;
+    }
 
     if(auto goodElement = il2cpp_utils::try_cast<GoodCutScoringElement>(scoringElement)) {
         if(!allowedNoteTypes.contains(scoringElement->get_noteData()->scoringType))
@@ -332,7 +336,8 @@ MAKE_HOOK_MATCH(NoteEventFinish, &ScoreController::DespawnScoringElement, void, 
     } else if(il2cpp_utils::try_cast<BadCutScoringElement>(scoringElement)) {
         currentTracker.misses++;
     } else if(il2cpp_utils::try_cast<MissScoringElement>(scoringElement)) {
-        currentTracker.misses++;
+        if(!isBomb)
+            currentTracker.misses++;
     }
 
     float pct = self->multipliedScore / (float) self->immediateMaxPossibleMultipliedScore;
