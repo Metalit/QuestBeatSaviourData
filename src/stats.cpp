@@ -9,6 +9,7 @@
 #include "HMUI/ViewController_AnimationType.hpp"
 
 #include "GlobalNamespace/IPreviewBeatmapLevel.hpp"
+#include "GlobalNamespace/CustomPreviewBeatmapLevel.hpp"
 #include "GlobalNamespace/BeatmapDifficulty.hpp"
 #include "GlobalNamespace/PlayerDataModel.hpp"
 #include "GlobalNamespace/PlayerData.hpp"
@@ -349,6 +350,8 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     IPreviewBeatmapLevel* levelData = reinterpret_cast<IPreviewBeatmapLevel*>(beatmap->get_level());
     auto cover = levelData->GetCoverImageAsync(System::Threading::CancellationToken::get_None());
 
+    bool customLevel = il2cpp_utils::try_cast<CustomPreviewBeatmapLevel>(levelData).has_value();
+
     songCover->set_sprite(cover->get_Result());
     songName->set_text(levelData->get_songName());
     songAuthor->set_text(levelData->get_songAuthorName());
@@ -357,7 +360,7 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     songCover->get_gameObject()->set_active(resultScreen);
     songName->get_gameObject()->set_active(resultScreen);
     songAuthor->get_gameObject()->set_active(resultScreen);
-    songMapper->get_gameObject()->set_active(resultScreen);
+    songMapper->get_gameObject()->set_active(resultScreen && customLevel);
     
     // parse difficulty name and corresponding color
     std::string diffName;
