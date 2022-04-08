@@ -251,8 +251,7 @@ MAKE_HOOK_MATCH(LevelLeaderboardSolo, &PlatformLeaderboardViewController::SetDat
     // ui is a war
     detailsButton->get_transform()->SetParent(self->get_transform(), false);
     auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
-    rect->set_anchorMin({0.07, 0.1});
-    rect->set_anchorMax({0.07, 0.1});
+    rect->set_anchoredPosition({-39.5, -36});
     detailsButton->get_gameObject()->set_active(mapSaved(difficultyBeatmap));
 }
 
@@ -270,8 +269,7 @@ MAKE_HOOK_MATCH(LevelLeaderboardParty, &LocalLeaderboardViewController::SetData,
     // ui is a war
     detailsButton->get_transform()->SetParent(self->get_transform(), false);
     auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
-    rect->set_anchorMin({0.07, 0.85});
-    rect->set_anchorMax({0.07, 0.85});
+    rect->set_anchoredPosition({-39.5, 23});
     detailsButton->get_gameObject()->set_active(mapSaved(difficultyBeatmap));
 }
 
