@@ -86,7 +86,7 @@ HMUI::ImageView* anchorImage(UnityEngine::Transform* parent, UnityEngine::Sprite
 }
 
 TMPro::TextMeshProUGUI* anchorText(UnityEngine::Transform* parent, std::string text, float xmin, float ymin, float xmax, float ymax) {
-    TMPro::TextMeshProUGUI* ret = BeatSaberUI::CreateText(parent, to_utf16(text));
+    TMPro::TextMeshProUGUI* ret = BeatSaberUI::CreateText(parent, text, false);
     ANCHOR(ret, xmin, ymin, xmax, ymax)
     ret->set_alignment(TMPro::TextAlignmentOptions::Center);
     return ret;
