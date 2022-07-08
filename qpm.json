@@ -39,6 +39,11 @@
       "id": "bs-utils",
       "versionRange": "^0.7.0",
       "additionalData": {}
+    },
+    {
+      "id": "overswing",
+      "versionRange": "^0.1.0",
+      "additionalData": {}
     }
   ],
   "additionalData": {}

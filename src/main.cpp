@@ -9,6 +9,8 @@
 
 #include "bs-utils/shared/utils.hpp"
 
+#include "overswing/shared/callback.hpp"
+
 #include "questui/shared/QuestUI.hpp"
 #include "questui/shared/BeatSaberUI.hpp"
 #include "custom-types/shared/register.hpp"
@@ -65,7 +67,6 @@ const std::unordered_set<int> allowedNoteTypes = {
 
 LevelStats* levelStatsView = nullptr;
 ScoreGraph* scoreGraphView = nullptr;
-std::unordered_map<SaberSwingRatingCounter*, CutScoreBuffer*> swingMap;
 UnityEngine::UI::Button* detailsButton;
 
 ModInfo modInfo;
@@ -281,7 +282,6 @@ MAKE_HOOK_MATCH(LevelPlay, &SinglePlayerLevelSelectionFlowCoordinator::StartLeve
     currentTracker.min_pct = 1;
     currentTracker.song_time = self->get_selectedBeatmapLevel()->get_songDuration();
     percents.clear();
-    swingMap.clear();
     // disable score view in level select if needed
     if(levelSelectCoordinator)
         levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
@@ -292,13 +292,6 @@ MAKE_HOOK_MATCH(LevelPlay, &SinglePlayerLevelSelectionFlowCoordinator::StartLeve
 MAKE_HOOK_MATCH(LevelPause, &PauseMenuManager::ShowMenu, void, PauseMenuManager* self) {
     LevelPause(self);
     currentTracker.pauses++;
-}
-
-// populates the SaberSwingRatingCounter -> CutScoreBuffer map specifically before SaberSwingRatingCounter.Init
-MAKE_HOOK_MATCH(NoteCut, &CutScoreBuffer::Init, bool, CutScoreBuffer* self, ByRef<NoteCutInfo> noteCutInfo) {
-    swingMap[self->saberSwingRatingCounter] = self;
-    
-    return NoteCut(self, noteCutInfo);
 }
 
 // adds note events to the tracker (cuts, bad cuts, misses)
@@ -335,7 +328,6 @@ MAKE_HOOK_MATCH(NoteEventFinish, &ScoreController::DespawnScoringElement, void, 
             currentTracker.r_accuracy += buffer->get_centerDistanceCutScore();
             currentTracker.r_speed += buffer->noteCutInfo.saberSpeed;
         }
-        swingMap.erase(buffer->saberSwingRatingCounter);
     } else if(il2cpp_utils::try_cast<BadCutScoringElement>(scoringElement)) {
         currentTracker.misses++;
     } else if(il2cpp_utils::try_cast<MissScoringElement>(scoringElement)) {
@@ -353,95 +345,6 @@ MAKE_HOOK_MATCH(NoteEventFinish, &ScoreController::DespawnScoringElement, void, 
     float time = scoringElement->get_time();
 
     percents.push_back(std::make_pair(time, pct));
-}
-
-// calculate pre swing overswing and also ensure the pre swing is clamped
-MAKE_HOOK_MATCH(PreSwingAngleData, &SaberSwingRatingCounter::Init, void, SaberSwingRatingCounter* self, ISaberMovementData* saberMovementData, UnityEngine::Vector3 notePosition, UnityEngine::Quaternion noteRotation, bool rateBeforeCut, bool rateAfterCut) {
-    PreSwingAngleData(self, saberMovementData, notePosition, noteRotation, rateBeforeCut, rateAfterCut);
-
-    auto& buffer = swingMap[self];
-    bool leftSaber = buffer->noteCutInfo.saberType == SaberType::SaberA;
-
-    if(self->rateBeforeCut) {
-        if(leftSaber)
-            currentTracker.l_preSwing += self->beforeCutRating;
-        else
-            currentTracker.r_preSwing += self->beforeCutRating;
-    }
-
-    if(self->beforeCutRating > 1)
-        self->beforeCutRating = 1;
-}
-
-// calculate post swing overswing and also ensure the pre swing is clamped
-MAKE_HOOK_MATCH(PostSwingAngleData, &SaberSwingRatingCounter::ProcessNewData, void, SaberSwingRatingCounter* self, BladeMovementDataElement newData, BladeMovementDataElement prevData, bool prevDataAreValid) {
-    bool alreadyCut = self->notePlaneWasCut;
-
-    // avoid clamping in this method only when called from Init
-    // since Init also computes beforeCutRating, when this method is reached it will detect that it doesn't need to clamp
-    // it will then be clamped at the end of Init, after this call, and then won't trigger dontClamp again
-    // it won't know the difference if Init doesn't compute a value over 1, but then it doesn't matter if we clamp anyway
-    // unless Init calculates a value below one and then here we calculate a value above one, in which case it will be clamped
-    // but hopefully that isn't too significant, as it would be kind of complicated to fix
-    bool dontClamp = self->beforeCutRating > 1;
-    
-    PostSwingAngleData(self, newData, prevData, prevDataAreValid);
-
-    auto& buffer = swingMap[self];
-    bool leftSaber = buffer->noteCutInfo.saberType == SaberType::SaberA;
-
-    if(!alreadyCut) {
-        float postAngle = UnityEngine::Vector3::Angle(self->cutTopPos - self->cutBottomPos, self->afterCutTopPos - self->afterCutBottomPos);
-        if(leftSaber)
-            currentTracker.l_postSwing += SaberSwingRating::AfterCutStepRating(postAngle, 0);
-        else
-            currentTracker.r_postSwing += SaberSwingRating::AfterCutStepRating(postAngle, 0);
-    } else {
-        float num = UnityEngine::Vector3::Angle(newData.segmentNormal, self->cutPlaneNormal);
-        if(leftSaber)
-            currentTracker.l_postSwing += SaberSwingRating::AfterCutStepRating(newData.segmentAngle, num);
-        else
-            currentTracker.r_postSwing += SaberSwingRating::AfterCutStepRating(newData.segmentAngle, num);
-    }
-    
-    // correct for change in ComputeSwingRating
-    if(self->beforeCutRating > 1 && !dontClamp)
-        self->beforeCutRating = 1;
-}
-
-// override to remove clamping at the end of this method and sort it out elsewhere so we can add up overswings
-MAKE_HOOK_MATCH(CalculateSwingRating, static_cast<float (SaberMovementData::*)(bool, float)>(&SaberMovementData::ComputeSwingRating), float, SaberMovementData* self, bool overrideSegmenAngle, float overrideValue) {
-    if (self->validCount < 2)
-        return 0;
-
-    int num = self->data.Length();
-    int num2 = self->nextAddIndex - 1;
-    if (num2 < 0)
-        num2 += num;
-
-    float time = self->data[num2].time;
-    float num3 = time;
-    float num4 = 0;
-    UnityEngine::Vector3 segmentNormal = self->data[num2].segmentNormal;
-    float angleDiff = (overrideSegmenAngle ? overrideValue : self->data[num2].segmentAngle);
-    int num5 = 2;
-
-    num4 += SaberSwingRating::BeforeCutStepRating(angleDiff, 0);
-
-    while (time - num3 < 0.4 && num5 < self->validCount) {
-        num2--;
-        if (num2 < 0)
-            num2 += num;
-        UnityEngine::Vector3 segmentNormal2 = self->data[num2].segmentNormal;
-        angleDiff = self->data[num2].segmentAngle;
-        float num6 = UnityEngine::Vector3::Angle(segmentNormal2, segmentNormal);
-        if (num6 > 90)
-            break;
-        num4 += SaberSwingRating::BeforeCutStepRating(angleDiff, num6);
-        num3 = self->data[num2].time;
-        num5++;
-    }
-    return num4;
 }
 
 // override to use customAddQuad, which simply does the same thing as AddQuad which would be in its place but also accounts for curved canvases
@@ -667,6 +570,16 @@ extern "C" void load() {
     QuestUI::Init();
     QuestUI::Register::RegisterModSettingsViewController(modInfo, DidActivate);
 
+    overswingCallbacks.addCallback(*[](SwingInfo info) {
+        if(info.rightSaber) {
+            currentTracker.r_preSwing += info.preSwing;
+            currentTracker.r_postSwing += info.postSwing;
+        } else {
+            currentTracker.l_preSwing += info.preSwing;
+            currentTracker.l_postSwing += info.postSwing;
+        }
+    });
+
     getLogger().info("Installing hooks...");
     LoggerContextObject logger = getLogger().WithContext("load");
     INSTALL_HOOK(logger, ProcessResultsSolo);
@@ -674,11 +587,7 @@ extern "C" void load() {
     INSTALL_HOOK(logger, PostNameResultsParty);
     INSTALL_HOOK(logger, LevelPlay);
     INSTALL_HOOK(logger, LevelPause);
-    INSTALL_HOOK(logger, NoteCut);
     INSTALL_HOOK(logger, NoteEventFinish);
-    INSTALL_HOOK(logger, PreSwingAngleData);
-    INSTALL_HOOK(logger, PostSwingAngleData);
-    INSTALL_HOOK_ORIG(logger, CalculateSwingRating);
     INSTALL_HOOK_ORIG(logger, FillImage);
     INSTALL_HOOK(logger, LevelLeaderboardSolo);
     INSTALL_HOOK(logger, LevelLeaderboardParty);
