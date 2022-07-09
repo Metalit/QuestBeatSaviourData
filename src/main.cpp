@@ -37,6 +37,7 @@
 #include "GlobalNamespace/BeatmapData.hpp"
 #include "GlobalNamespace/GameplayModifiers.hpp"
 #include "GlobalNamespace/SinglePlayerLevelSelectionFlowCoordinator.hpp"
+#include "GlobalNamespace/MenuTransitionsHelper.hpp"
 #include "GlobalNamespace/PlatformLeaderboardViewController.hpp"
 #include "GlobalNamespace/LeaderboardsModel.hpp"
 #include "GlobalNamespace/LocalLeaderboardViewController.hpp"
@@ -275,17 +276,19 @@ MAKE_HOOK_MATCH(LevelLeaderboardParty, &LocalLeaderboardViewController::SetData,
 }
 
 // resets trackers when starting a level
-MAKE_HOOK_MATCH(LevelPlay, &SinglePlayerLevelSelectionFlowCoordinator::StartLevel, void, SinglePlayerLevelSelectionFlowCoordinator* self, System::Action* beforeSceneSwitchCallback, bool practice) {
-    LevelPlay(self, beforeSceneSwitchCallback, practice);
+MAKE_HOOK_MATCH(LevelPlay, static_cast<void(MenuTransitionsHelper::*)(StringW, IDifficultyBeatmap*, IPreviewBeatmapLevel*, OverrideEnvironmentSettings*, ColorScheme*, GameplayModifiers*, PlayerSpecificSettings*, PracticeSettings*, StringW, bool, bool, System::Action*, System::Action_1<Zenject::DiContainer*>*, System::Action_2<StandardLevelScenesTransitionSetupDataSO*, LevelCompletionResults*>*)>(&MenuTransitionsHelper::StartStandardLevel),
+        void, MenuTransitionsHelper* self, StringW f1, IDifficultyBeatmap* f2, IPreviewBeatmapLevel* f3, OverrideEnvironmentSettings* f4, ColorScheme* f5, GameplayModifiers* f6, PlayerSpecificSettings* f7, PracticeSettings* f8, StringW f9, bool f10, bool f11, System::Action* f12, System::Action_1<Zenject::DiContainer*>* f13, System::Action_2<StandardLevelScenesTransitionSetupDataSO*, LevelCompletionResults*>* f14) {
+    LevelPlay(self, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14);
     // reset current tracker
     currentTracker = {};
     currentTracker.min_pct = 1;
-    currentTracker.song_time = self->get_selectedBeatmapLevel()->get_songDuration();
+    currentTracker.song_time = f3->get_songDuration();
     percents.clear();
     // disable score view in level select if needed
     if(levelSelectCoordinator)
         levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
-    levelStatsView->get_gameObject()->set_active(false);
+    if(levelStatsView)
+        levelStatsView->get_gameObject()->set_active(false);
 }
 
 // tracks pauses
