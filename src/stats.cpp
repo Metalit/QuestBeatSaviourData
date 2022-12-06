@@ -1,5 +1,5 @@
 #include "main.hpp"
-#include "config.hpp"
+#include "settings.hpp"
 #include "stats.hpp"
 #include "localdata.hpp"
 #include "sprites.hpp"
@@ -64,11 +64,11 @@ inline float safeDiv(float numerator, float denominator) {
 
 std::string Round(float num, std::string_view extra = "") {
     std::stringstream out;
-    out << std::fixed << std::setprecision(globalConfig.NumDecimals) << num;
+    out << std::fixed << std::setprecision(getConfig().NumDecimals.GetValue()) << num;
     out << extra;
 
     std::string s = out.str();
-    if(globalConfig.UseCommas) {
+    if(getConfig().UseCommas.GetValue()) {
         int i = s.find('.');
         if(i > 0)
             s[i] = ',';
@@ -183,7 +183,7 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     // delete button, mostly copied from songloader, should be in questui as some sort of createIconButton
     deleteButton = BeatSaberUI::CreateUIButton(get_transform(), "", "PracticeButton", {55, 36}, {10, 10}, [this](){
         if(lastBeatmap)
-            deleteMap(lastBeatmap);
+            DeleteMap(lastBeatmap);
         disableDetailsButton();
         // close menu
         levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
@@ -475,7 +475,7 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     graphContainer = anchorContainer(rect, 0.05, 0.05, 0.95, 0.87);
 
     int minPct = 0;
-    if(globalConfig.NarrowGraphRange) {
+    if(getConfig().NarrowGraphRange.GetValue()) {
         minPct = 9;
         while(minPct > 0) {
             if(currentTracker.min_pct*10 - minPct >= 10 - currentTracker.max_pct*10)

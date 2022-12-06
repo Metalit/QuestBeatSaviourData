@@ -1,7 +1,5 @@
 #pragma once
 
-#include "TypeMacros.hpp"
-
 #include "rapidjson-macros/shared/macros.hpp"
 
 #include "GlobalNamespace/IDifficultyBeatmap.hpp"

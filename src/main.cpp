@@ -2,7 +2,7 @@
 #include "stats.hpp"
 #include "sprites.hpp"
 #include "localdata.hpp"
-#include "config.hpp"
+#include "settings.hpp"
 
 #include "beatsaber-hook/shared/utils/hooking.hpp"
 #include "beatsaber-hook/shared/config/config-utils.hpp"
@@ -137,10 +137,10 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
     if(levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Incomplete)
         return;
 
-    if(!globalConfig.ShowOnPass && levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Cleared)
+    if(!getConfig().ShowOnPass.GetValue() && levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Cleared)
         return;
 
-    if(!globalConfig.ShowOnFail && failed)
+    if(!getConfig().ShowOnFail.GetValue() && failed)
         return;
 
     if(levelCompletionResults->multipliedScore == 0)
@@ -148,7 +148,7 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
 
     self->SetLeftScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
 
-    if(globalConfig.ShowGraph)
+    if(getConfig().ShowGraph.GetValue())
         self->SetRightScreenViewController(scoreGraphView, HMUI::ViewController::AnimationType::None);
 
     // add completion results to currentTracker
@@ -165,8 +165,8 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
     levelStatsView->setText(difficultyBeatmap);
 
     // don't save on practice or fails
-    if(globalConfig.SaveLocally && !practice && !failed && bs_utils::Submission::getEnabled()) {
-        saveMap(difficultyBeatmap);
+    if(getConfig().SaveLocally.GetValue() && !practice && !failed && bs_utils::Submission::getEnabled()) {
+        SaveMap(difficultyBeatmap);
         if(detailsButton)
             detailsButton->get_gameObject()->set_active(true);
     }
@@ -186,7 +186,7 @@ void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* diffic
             if(!lastBeatmap)
                 return;
             levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::In);
-            loadMap(lastBeatmap);
+            LoadMap(lastBeatmap);
             levelStatsView->setText(lastBeatmap, false);
         });
         ((UnityEngine::RectTransform*) detailsButton->get_transform())->set_sizeDelta({10, 10});
@@ -251,7 +251,7 @@ MAKE_HOOK_MATCH(LevelLeaderboardSolo, &PlatformLeaderboardViewController::SetDat
     detailsButton->get_transform()->SetParent(self->get_transform(), false);
     auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
     rect->set_anchoredPosition({-39.5, -36});
-    detailsButton->get_gameObject()->set_active(mapSaved(difficultyBeatmap));
+    detailsButton->get_gameObject()->set_active(MapSaved(difficultyBeatmap));
 }
 
 // manages stats view on the party leaderboard
@@ -269,13 +269,13 @@ MAKE_HOOK_MATCH(LevelLeaderboardParty, &LocalLeaderboardViewController::SetData,
     detailsButton->get_transform()->SetParent(self->get_transform(), false);
     auto rect = reinterpret_cast<UnityEngine::RectTransform*>(detailsButton->get_transform());
     rect->set_anchoredPosition({-39.5, 23});
-    detailsButton->get_gameObject()->set_active(mapSaved(difficultyBeatmap));
+    detailsButton->get_gameObject()->set_active(MapSaved(difficultyBeatmap));
 }
 
 // resets trackers when starting a level
-MAKE_HOOK_MATCH(LevelPlay, static_cast<void(MenuTransitionsHelper::*)(StringW, IDifficultyBeatmap*, IPreviewBeatmapLevel*, OverrideEnvironmentSettings*, ColorScheme*, GameplayModifiers*, PlayerSpecificSettings*, PracticeSettings*, StringW, bool, bool, System::Action*, System::Action_1<Zenject::DiContainer*>*, System::Action_2<StandardLevelScenesTransitionSetupDataSO*, LevelCompletionResults*>*)>(&MenuTransitionsHelper::StartStandardLevel),
-        void, MenuTransitionsHelper* self, StringW f1, IDifficultyBeatmap* f2, IPreviewBeatmapLevel* f3, OverrideEnvironmentSettings* f4, ColorScheme* f5, GameplayModifiers* f6, PlayerSpecificSettings* f7, PracticeSettings* f8, StringW f9, bool f10, bool f11, System::Action* f12, System::Action_1<Zenject::DiContainer*>* f13, System::Action_2<StandardLevelScenesTransitionSetupDataSO*, LevelCompletionResults*>* f14) {
-    LevelPlay(self, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14);
+MAKE_HOOK_MATCH(LevelPlay, static_cast<void(MenuTransitionsHelper::*)(StringW, IDifficultyBeatmap*, IPreviewBeatmapLevel*, OverrideEnvironmentSettings*, ColorScheme*, GameplayModifiers*, PlayerSpecificSettings*, PracticeSettings*, StringW, bool, bool, System::Action*, System::Action_1<Zenject::DiContainer*>*, System::Action_2<StandardLevelScenesTransitionSetupDataSO*, LevelCompletionResults*>*, System::Action_2<LevelScenesTransitionSetupDataSO*, LevelCompletionResults*>*)>(&MenuTransitionsHelper::StartStandardLevel),
+        void, MenuTransitionsHelper* self, StringW f1, IDifficultyBeatmap* f2, IPreviewBeatmapLevel* f3, OverrideEnvironmentSettings* f4, ColorScheme* f5, GameplayModifiers* f6, PlayerSpecificSettings* f7, PracticeSettings* f8, StringW f9, bool f10, bool f11, System::Action* f12, System::Action_1<Zenject::DiContainer*>* f13, System::Action_2<StandardLevelScenesTransitionSetupDataSO*, LevelCompletionResults*>* f14, System::Action_2<LevelScenesTransitionSetupDataSO*, LevelCompletionResults*>* f15) {
+    LevelPlay(self, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15);
     // reset current tracker
     currentTracker = {};
     currentTracker.min_pct = 1;
@@ -547,17 +547,14 @@ extern "C" void setup(ModInfo& info) {
     info.version = VERSION;
     modInfo = info;
 
-    if(!fileexists(GetConfigPath()))
-        WriteToFile(GetConfigPath(), globalConfig);
-    else
-        ReadFromFile(GetConfigPath(), globalConfig);
+    getConfig().Init(modInfo);
 
     if(!direxists(getDataDir(modInfo)))
         mkpath(getDataDir(modInfo));
 
     if(!fileexists(GetDataPath()))
         writefile(GetDataPath(), "null");
-    loadData();
+    LoadData();
 }
 
 extern "C" void load() {

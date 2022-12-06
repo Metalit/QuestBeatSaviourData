@@ -22,7 +22,7 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
 
     AddConfigValueToggle(vertical, getConfig().NarrowGraphRange);
 
-    AddConfigValueIncrementInt(vertical, getConfig().NumDecimals, 0, 3);
+    AddConfigValueIncrementInt(vertical, getConfig().NumDecimals, 1, 0, 3);
 
     AddConfigValueToggle(vertical, getConfig().SaveLocally);
 

@@ -1,9 +1,7 @@
-#include "main.hpp"
+#include "sprites.hpp"
 #include "assets.hpp"
 
 #include "questui/shared/BeatSaberUI.hpp"
-
-using namespace IncludedAssets;
 
 #define SPRITE_FUNC(name) \
 UnityEngine::Sprite* name##Sprite() { \
