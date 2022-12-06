@@ -130,16 +130,16 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
         levelStatsView = QuestUI::BeatSaberUI::CreateViewController<LevelStats*>();
     if(!scoreGraphView)
         scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<ScoreGraph*>();
-    
+
     bool failed = levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Failed;
-    
+
     // exit through pause or something
     if(levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Incomplete)
         return;
 
     if(!globalConfig.ShowOnPass && levelCompletionResults->levelEndStateType == LevelCompletionResults::LevelEndStateType::Cleared)
         return;
-    
+
     if(!globalConfig.ShowOnFail && failed)
         return;
 
@@ -147,7 +147,7 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
         return;
 
     self->SetLeftScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::None);
-    
+
     if(globalConfig.ShowGraph)
         self->SetRightScreenViewController(scoreGraphView, HMUI::ViewController::AnimationType::None);
 
@@ -163,7 +163,7 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
     currentTracker.date = std::string(time.ToString("dddd, d MMMM yyyy h:mm tt"));
 
     levelStatsView->setText(difficultyBeatmap);
-    
+
     // don't save on practice or fails
     if(globalConfig.SaveLocally && !practice && !failed && bs_utils::Submission::getEnabled()) {
         saveMap(difficultyBeatmap);
@@ -176,13 +176,13 @@ void processResults(SinglePlayerLevelSelectionFlowCoordinator* self, LevelComple
 bool flashed = false;
 void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* difficultyBeatmap) {
     static ConstString buttonName("BeatSaviorDataDetailsButton");
-    
+
     // use button tranform as a marker to construct everything after a soft restart
     auto buttonTransform = self->get_transform()->Find(buttonName);
     if(!buttonTransform) {
-        getLogger().info("Creating details button");
+        LOG_INFO("Creating details button");
         detailsButton = QuestUI::BeatSaberUI::CreateUIButton(self->get_transform(), "...", [](){
-            // getLogger().info("Displaying level stats from file");
+            // LOG_INFO("Displaying level stats from file");
             if(!lastBeatmap)
                 return;
             levelSelectCoordinator->SetRightScreenViewController(levelStatsView, HMUI::ViewController::AnimationType::In);
@@ -194,10 +194,10 @@ void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* diffic
         detailsButton->get_gameObject()->set_name(buttonName);
     } else
         detailsButton = buttonTransform->GetComponent<UnityEngine::UI::Button*>();
-    
+
     if(!buttonTransform && detailsButton)
         ClearSprites();
-    
+
     if(!levelStatsView || !buttonTransform) {
         levelStatsView = QuestUI::BeatSaberUI::CreateViewController<LevelStats*>();
         scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<ScoreGraph*>();
@@ -298,7 +298,7 @@ MAKE_HOOK_MATCH(LevelPause, &PauseMenuManager::ShowMenu, void, PauseMenuManager*
 }
 
 // adds note events to the tracker (cuts, bad cuts, misses)
-MAKE_HOOK_MATCH(NoteEventFinish, &ScoreController::DespawnScoringElement, void, ScoreController* self, ScoringElement* scoringElement) {    
+MAKE_HOOK_MATCH(NoteEventFinish, &ScoreController::DespawnScoringElement, void, ScoreController* self, ScoringElement* scoringElement) {
     NoteEventFinish(self, scoringElement);
 
     bool isBomb = scoringElement->get_noteData()->colorType == ColorType::None;
@@ -519,7 +519,7 @@ MAKE_HOOK_MATCH(ButtonTransition, &HMUI::NoTransitionsButton::DoStateTransition,
 
     if(self->get_gameObject()->get_name() != "BeatSaviorDataBackButton")
         return;
-    
+
     // set colors for the back button
     auto bg = self->GetComponentsInChildren<UnityEngine::UI::Image*>()[0];
 
@@ -554,18 +554,17 @@ extern "C" void setup(ModInfo& info) {
         WriteToFile(GetConfigPath(), globalConfig);
     else
         ReadFromFile(GetConfigPath(), globalConfig);
-    
+
     if(!direxists(getDataDir(modInfo)))
         mkpath(getDataDir(modInfo));
 
     if(!fileexists(GetDataPath()))
         writefile(GetDataPath(), "null");
     loadData();
-	
 }
 
 extern "C" void load() {
-    getLogger().info("Starting setup...");
+    LOG_INFO("Starting setup...");
     il2cpp_functions::Init();
 
     custom_types::Register::AutoRegister();
@@ -583,7 +582,7 @@ extern "C" void load() {
         }
     });
 
-    getLogger().info("Installing hooks...");
+    LOG_INFO("Installing hooks...");
     LoggerContextObject logger = getLogger().WithContext("load");
     INSTALL_HOOK(logger, ProcessResultsSolo);
     INSTALL_HOOK(logger, ProcessResultsParty);
@@ -595,5 +594,5 @@ extern "C" void load() {
     INSTALL_HOOK(logger, LevelLeaderboardSolo);
     INSTALL_HOOK(logger, LevelLeaderboardParty);
     INSTALL_HOOK(logger, ButtonTransition);
-    getLogger().info("Installed all hooks!");
+    LOG_INFO("Installed all hooks!");
 }

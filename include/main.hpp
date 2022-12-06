@@ -8,6 +8,9 @@
 
 Logger& getLogger();
 
+#define LOG_INFO(...) getLogger().info(__VA_ARGS__)
+#define LOG_ERROR(...) getLogger().error(__VA_ARGS__)
+
 std::string GetConfigPath();
 std::string GetDataPath();
 

@@ -69,12 +69,9 @@ std::string Round(float num, std::string_view extra = "") {
 
     std::string s = out.str();
     if(globalConfig.UseCommas) {
-        getLogger().debug("yo wtf is this crashing");
         int i = s.find('.');
-        getLogger().debug("i: %i", i);
         if(i > 0)
             s[i] = ',';
-        getLogger().debug("it even made it past here");
     }
     return s;
 }
@@ -96,7 +93,7 @@ UnityEngine::GameObject* anchorContainer(UnityEngine::Transform* parent, float x
     static ConstString name("BeatSaviorDataContainer");
     auto go = UnityEngine::GameObject::New_ctor(name);
     go->AddComponent<UnityEngine::UI::ContentSizeFitter*>();
-    
+
     auto rect = go->GetComponent<UnityEngine::RectTransform*>();
     rect->SetParent(parent, false);
     rect->set_anchorMin({xmin, ymin});
@@ -115,7 +112,7 @@ UnityEngine::UI::Image* createLine(UnityEngine::Transform* parent, UnityEngine::
 
     float dist = UnityEngine::Vector2::Distance(a, b);
     UnityEngine::Vector2 dir = (b - a).get_normalized();
-    
+
     UnityEngine::UI::Image* image = BeatSaberUI::CreateImage(parent, WhiteSprite(), (a + dir * dist * 0.5)*graphScale, {dist*graphScale, 0.3});
     ANCHOR(image, 0, 0, 0, 0);
 
@@ -129,11 +126,11 @@ UnityEngine::UI::Image* createLine(UnityEngine::Transform* parent, UnityEngine::
 void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
     if(!firstActivation) return;
 
-    getLogger().info("Constructing level stats menu");
+    LOG_INFO("Constructing level stats menu");
 
     #pragma region songInfo
     auto song = anchorContainer(get_transform(), 0, 0.75, 1, 1);
-    
+
     songCover = anchorImage(song->get_transform(), WhiteSprite(), 0.01, 0.05, 0.175, 0.95);
     auto songInfo = anchorContainer(song->get_transform(), 0.44, 0.05, 1, 0.95);
     songName = anchorText(songInfo->get_transform(), "Song Name", 0, 0.55, 1, 1.1);
@@ -172,7 +169,7 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
 
     date = anchorText(detailsSpecifics->get_transform(), "Date Played - N/A", 0, 0, 1, 0.304);
     date->set_fontSize(5);
-    
+
     auto backButton = BeatSaberUI::CreateUIButton(detailsSpecifics->get_transform(), "", "BackButton", [this](){
         levelSelectCoordinator->SetRightScreenViewController(levelSelectCoordinator->get_leaderboardViewController(), HMUI::ViewController::AnimationType::In);
         this->get_gameObject()->set_active(false);
@@ -209,7 +206,7 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     #pragma endregion
 
     #pragma region globalStats
-    getLogger().info("Constructing global stats");
+    LOG_INFO("Constructing global stats");
 
     auto globalStats = anchorContainer(get_transform(), 0, 0.61, 1, 0.74);
     top_line = anchorImage(globalStats->get_transform(), WhiteSprite(), 0, 0.97, 1, 1);
@@ -266,7 +263,7 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     l_postSwing = anchorText(leftSaber->get_transform(), "N/A", 0.5, 0.09, 0.9, 0.19);
     l_postSwing->set_fontSize(5);
     #pragma endregion
-    
+
     anchorImage(get_transform(), WhiteSprite(), 0.498, 0.05, 0.502, 0.6);
 
     #pragma region rightSaber
@@ -304,11 +301,11 @@ void LevelStats::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     r_postSwing->set_fontSize(5);
     #pragma endregion
 
-    getLogger().info("Level stats finished");
+    LOG_INFO("Level stats finished");
 }
 
 void LevelStats::setColors(UnityEngine::Color leftColor, UnityEngine::Color rightColor) {
-    // getLogger().info("Setting UI colors");
+    // LOG_INFO("Setting UI colors");
     l_cut->set_color(leftColor);
     l_beforeCut->set_color(leftColor);
     l_afterCut->set_color(leftColor);
@@ -318,7 +315,7 @@ void LevelStats::setColors(UnityEngine::Color leftColor, UnityEngine::Color righ
     l_preSwing->set_color(leftColor);
     l_postSwing->set_color(leftColor);
     l_circle->set_color(leftColor);
-    
+
     r_cut->set_color(rightColor);
     r_beforeCut->set_color(rightColor);
     r_afterCut->set_color(rightColor);
@@ -361,7 +358,7 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     songName->get_gameObject()->set_active(resultScreen);
     songAuthor->get_gameObject()->set_active(resultScreen);
     songMapper->get_gameObject()->set_active(resultScreen && customLevel);
-    
+
     // parse difficulty name and corresponding color
     std::string diffName;
     UnityEngine::Color color;
@@ -397,7 +394,7 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     date->set_text("Date Played - " + currentTracker.date);
     detailsSpecifics->set_active(!resultScreen);
     deleteButton->get_gameObject()->set_active(!resultScreen);
-    
+
     #pragma region levelstats
 
     int maxScore = currentTracker.maxScore;
@@ -452,7 +449,7 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
     l_preSwing->set_text(Round(safeDiv(currentTracker.l_preSwing * 100, l_notes), "%"));
     l_postSwing->set_text(Round(safeDiv(currentTracker.l_postSwing * 100, l_notes), "%"));
     l_circle->set_fillAmount(safeDiv(currentTracker.l_cut, l_notes) / 115);
-    
+
     // right saber
     int r_notes = currentTracker.r_notes;
     r_cut->set_text(Round(safeDiv(currentTracker.r_cut, r_notes)));
@@ -468,7 +465,7 @@ void LevelStats::setText(IDifficultyBeatmap* beatmap, bool resultScreen) {
 }
 
 void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
-    getLogger().info("Min percent: %.2f, max percent: %.2f", currentTracker.min_pct, currentTracker.max_pct);
+    LOG_INFO("Min percent: %.2f, max percent: %.2f", currentTracker.min_pct, currentTracker.max_pct);
 
     if(graphContainer)
         UnityEngine::Object::Destroy(graphContainer);
@@ -476,7 +473,7 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
     auto rect = get_rectTransform();
 
     graphContainer = anchorContainer(rect, 0.05, 0.05, 0.95, 0.87);
-    
+
     int minPct = 0;
     if(globalConfig.NarrowGraphRange) {
         minPct = 9;
@@ -526,13 +523,13 @@ void ScoreGraph::DidActivate(bool firstActivation, bool addedToHierarchy, bool s
         // idk why this happens sometimes
         if(pct > 1 || pct < 0)
             continue;
-        
+
         if(!(lastTime < 0))
             createLine(graphContainer->get_transform(), {lastTime, lastPct}, {time, pct});
 
         lastTime = time;
         lastPct = pct;
     }
-    
-    getLogger().info("Graph finished");
+
+    LOG_INFO("Graph finished");
 }
