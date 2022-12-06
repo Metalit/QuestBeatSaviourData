@@ -7,7 +7,6 @@ set(ASSETS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 set(ASSET_BINARIES_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/binaryAssets)
 
 # Directory to save the prepended files to
-set(PREPENDED_ASSETS_DIR ${CMAKE_CURRENT_BINARY_DIR}/prependedAssets)
 set(ASSET_HEADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/include/assets.hpp")
 
 # Define a macro which we will use for defining the symbols to access our asset files below
@@ -24,22 +23,12 @@ struct prefix##name { \\
 
 if(EXISTS ${ASSETS_DIRECTORY})
     file(MAKE_DIRECTORY ${ASSET_BINARIES_DIRECTORY})
-    file(MAKE_DIRECTORY ${PREPENDED_ASSETS_DIR})
-    file(GLOB ASSETS LIST_DIRECTORIES false ${ASSETS_DIRECTORY}/*)
+    file(GLOB ASSETS ${ASSETS_DIRECTORY}/*.*)
 
     # Iterate through each file in the assets directory. TODO: This could be recursive
     foreach(FILE IN LISTS ASSETS)
         message("-- Including asset: ${FILE}")
         get_filename_component(ASSET ${FILE} NAME) # Find the asset's file name
-
-        # make a copy of the file with 32 bytes added in the build dir
-        add_custom_command(
-            OUTPUT ${PREPENDED_ASSETS_DIR}/${ASSET}
-            COMMAND ${CMAKE_COMMAND} -E echo_append "                                " > ${PREPENDED_ASSETS_DIR}/${ASSET}
-            COMMAND ${CMAKE_COMMAND} -E cat ${ASSETS_DIRECTORY}/${ASSET} >> ${PREPENDED_ASSETS_DIR}/${ASSET}
-            COMMAND ${CMAKE_COMMAND} -E echo_append " " >> ${PREPENDED_ASSETS_DIR}/${ASSET}
-            DEPENDS ${ASSETS_DIRECTORY}/${ASSET}
-        )
 
         set(OUTPUT_FILE "${ASSET_BINARIES_DIRECTORY}/${ASSET}.o") # Save our asset in the asset binaries directory
 
@@ -48,9 +37,9 @@ if(EXISTS ${ASSETS_DIRECTORY})
         # We only use the first two
         add_custom_command(
             OUTPUT ${OUTPUT_FILE}
-            COMMAND ${CMAKE_OBJCOPY} ${ASSET} ${OUTPUT_FILE} --input-target binary --output-target elf64-aarch64 --set-section-flags binary=strings
-            DEPENDS ${PREPENDED_ASSETS_DIR}/${ASSET}
-            WORKING_DIRECTORY ${PREPENDED_ASSETS_DIR}
+            COMMAND ${CMAKE_OBJCOPY} ${ASSET} ${OUTPUT_FILE} --input-target binary --output-target elf64-aarch64
+            DEPENDS ${ASSETS_DIRECTORY}/${ASSET}
+            WORKING_DIRECTORY ${ASSETS_DIRECTORY}
         )
         list(APPEND BINARY_ASSET_FILES ${OUTPUT_FILE})
 

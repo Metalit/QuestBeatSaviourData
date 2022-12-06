@@ -8,18 +8,16 @@ namespace BeatSaviorData {
     // notes refers to all notes, but l_notes and r_notes are only counted notes (see allowedNoteTypes in main.cpp)
     // score also refers to the total score, while fullNotesScore is the score of only the counted notes (both without modifiers as of v2)
     DECLARE_JSON_CLASS(Tracker,
+        DISCARD_EXTRA_FIELDS
         VALUE(int, score)
-        VALUE(int, maxScore)
-        VALUE(int, fullNotesScore)
+        VALUE_DEFAULT(int, maxScore, -1)
+        VALUE_DEFAULT(int, fullNotesScore, -1)
         VALUE(int, notes)
         VALUE(int, combo)
         VALUE(int, pauses)
         VALUE(int, misses)
         VALUE(int, l_notes)
         VALUE(int, r_notes)
-        VALUE(float, min_pct)
-        VALUE(float, max_pct)
-        VALUE(float, song_time)
         VALUE(float, l_cut)
         VALUE(float, l_beforeCut)
         VALUE(float, l_accuracy)
@@ -40,11 +38,25 @@ namespace BeatSaviorData {
         VALUE(std::string, characteristic)
         VALUE_OPTIONAL(std::string, modifiers)
         VALUE(int, difficulty)
-        VALUE_DEFAULT(int, trackerVersion, 2)
+        NAMED_VALUE_DEFAULT(int, trackerVersion, 2, "version")
+        float min_pct, max_pct, song_time;
     )
 
     DECLARE_JSON_CLASS(Level,
-        VECTOR_DEFAULT(Tracker, maps, {});
+        DESERIALIZE_ACTION(WhyDidIMakeThingsNotHaveNames,
+            if(!jsonValue.IsArray())
+                return;
+            for(auto& item : jsonValue.GetArray()) {
+                self->maps.emplace_back(Tracker());
+                self->maps.back().Deserialize(item);
+            }
+        )
+        SERIALIZE_ACTION(WhyDidIMakeThingsNotHaveNames,
+            jsonObject.SetArray();
+            for(auto& map : self->maps)
+                jsonObject.GetArray().PushBack(map.Serialize(allocator), allocator);
+        )
+        std::vector<Tracker> maps{};
     )
 }
 
