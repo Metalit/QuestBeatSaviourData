@@ -1,4 +1,3 @@
-
 # include some defines automatically made by qpm
 include(qpm_defines.cmake)
 
@@ -18,6 +17,7 @@ set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # compile options used
 add_compile_options(-frtti -fexceptions)
 add_compile_options(-O3)
+
 # compile definitions used
 add_compile_definitions(VERSION=\"${MOD_VERSION}\")
 add_compile_definitions(ID=\"${MOD_ID}\")
@@ -40,16 +40,21 @@ target_include_directories(${COMPILE_ID} PRIVATE .)
 
 # add src dir as include dir
 target_include_directories(${COMPILE_ID} PRIVATE ${SOURCE_DIR})
+
 # add include dir as include dir
 target_include_directories(${COMPILE_ID} PRIVATE ${INCLUDE_DIR})
+
 # add shared dir as include dir
 target_include_directories(${COMPILE_ID} PUBLIC ${SHARED_DIR})
-# codegen includes 
+
+# codegen includes
 target_include_directories(${COMPILE_ID} PRIVATE ${EXTERN_DIR}/includes/${CODEGEN_ID}/include)
-# rapidjson includes 
+
+# rapidjson includes
 target_include_directories(${COMPILE_ID} PRIVATE ${EXTERN_DIR}/includes/beatsaber-hook/shared/rapidjson/include)
 
 target_link_libraries(${COMPILE_ID} PRIVATE -llog)
+
 # add extern stuff like libs and other includes
 include(extern.cmake)
 
@@ -61,35 +66,39 @@ add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
 add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory debug
         COMMENT "Rename the lib to debug_ since it has debug symbols"
-        )
+)
 
 add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rename lib${COMPILE_ID}.so debug/lib${COMPILE_ID}.so
         COMMENT "Rename the lib to debug_ since it has debug symbols"
-        )
+)
 
 add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rename stripped_lib${COMPILE_ID}.so lib${COMPILE_ID}.so
         COMMENT "Rename the stripped lib to regular"
-        )
-
-foreach(so_file ${so_list})
-cmake_path(GET so_file FILENAME file)
-
-add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${so_file} debug/${file}
-        COMMENT "Copy so files for ndk stack"
 )
 
-add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
-        COMMAND ${CMAKE_STRIP} -g -S -d --strip-all ${so_file} -o ${file}
-        COMMENT "Strip debug symbols from the dependencies")
+foreach(so_file ${so_list})
+        cmake_path(GET so_file FILENAME file)
+
+        add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy ${so_file} debug/${file}
+                COMMENT "Copy so files for ndk stack"
+        )
+
+        add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
+                COMMAND ${CMAKE_STRIP} -g -S -d --strip-all ${so_file} -o ${file}
+                COMMENT "Strip debug symbols from the dependencies"
+        )
 endforeach()
 
 foreach(a_file ${a_list})
-cmake_path(GET a_file FILENAME file)
+        cmake_path(GET a_file FILENAME file)
 
-add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
-COMMAND ${CMAKE_COMMAND} -E copy ${a_file} debug/${file}
-COMMENT "Copy a files for ndk stack")
+        add_custom_command(TARGET ${COMPILE_ID} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy ${a_file} debug/${file}
+                COMMENT "Copy a files for ndk stack"
+        )
 endforeach()
+
+include(assets.cmake)

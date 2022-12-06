@@ -44,6 +44,7 @@ out/
 ndkpath.txt
 *.zip
 *.cmake
+!assets.cmake
 
 extern/
 

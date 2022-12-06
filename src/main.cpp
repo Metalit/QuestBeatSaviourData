@@ -195,9 +195,6 @@ void primeLevelStats(LeaderboardViewController* self, IDifficultyBeatmap* diffic
     } else
         detailsButton = buttonTransform->GetComponent<UnityEngine::UI::Button*>();
 
-    if(!buttonTransform && detailsButton)
-        ClearSprites();
-
     if(!levelStatsView || !buttonTransform) {
         levelStatsView = QuestUI::BeatSaberUI::CreateViewController<LevelStats*>();
         scoreGraphView = QuestUI::BeatSaberUI::CreateViewController<ScoreGraph*>();
