@@ -4,7 +4,7 @@
   "info": {
     "name": "BeatSaviorData",
     "id": "beatsaviordata",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "url": null,
     "additionalData": {
       "overrideSoName": "libbeatsaviordata.so"
@@ -13,7 +13,7 @@
   "dependencies": [
     {
       "id": "beatsaber-hook",
-      "versionRange": "^3.9.0",
+      "versionRange": "^3.14.0",
       "additionalData": {
         "extraFiles": [
           "src/inline-hook"
@@ -22,17 +22,17 @@
     },
     {
       "id": "codegen",
-      "versionRange": "^0.25.0",
+      "versionRange": "^0.28.0",
       "additionalData": {}
     },
     {
       "id": "questui",
-      "versionRange": "^0.16.2",
+      "versionRange": "^0.17.5",
       "additionalData": {}
     },
     {
       "id": "custom-types",
-      "versionRange": "^0.15.13",
+      "versionRange": "^0.15.22",
       "additionalData": {}
     },
     {
@@ -43,6 +43,11 @@
     {
       "id": "overswing",
       "versionRange": "^0.1.0",
+      "additionalData": {}
+    },
+    {
+      "id": "config-utils",
+      "versionRange": "^1.0.0",
       "additionalData": {}
     }
   ],
