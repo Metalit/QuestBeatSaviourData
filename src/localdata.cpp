@@ -7,150 +7,104 @@
 #include "GlobalNamespace/BeatmapCharacteristicSO.hpp"
 
 #include <map>
+#include <filesystem>
 
 using namespace GlobalNamespace;
 using namespace BeatSaviorData;
 
-rapidjson::Document globalDoc;
-std::map<std::string, BeatSaviorData::Level> id_levels;
+LocalData dataInstance;
 
 Tracker currentTracker{};
 
-void LoadData() {
-    auto json = readfile(GetDataPath());
+std::tuple<std::string, std::string, int> GetInfo(IDifficultyBeatmap* beatmap) {
+    std::string id = ((IPreviewBeatmapLevel*) beatmap->get_level())->get_levelID();
+    std::string characteristic = beatmap->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic()->get_serializedName();
+    int difficulty = beatmap->get_difficulty();
+    return {id, characteristic, difficulty};
+}
 
-    globalDoc.Parse(json);
-    if(globalDoc.HasParseError()) {
-        LOG_ERROR("Could not parse json!");
-        return;
+std::optional<std::reference_wrapper<Level>> GetLevel(std::string id) {
+    auto iter = dataInstance.levels.find(id);
+    if(iter == dataInstance.levels.end())
+        return std::nullopt;
+    return iter->second;
+}
+
+std::tuple<bool, std::vector<Tracker>::iterator> GetMap(std::optional<std::reference_wrapper<Level>>& opt, std::string characteristic, int difficulty) {
+    auto& level = opt->get();
+    for(auto iter = level.maps.begin(); iter != level.maps.end(); iter++) {
+        if(iter->characteristic == characteristic && iter->difficulty == difficulty)
+            return {true, iter};
     }
-    if(!globalDoc.IsObject())
-        globalDoc.SetObject();
+    return {false, level.maps.end()};
+}
 
-    id_levels.clear();
+void LoadData() {
+    static const std::string start = "{\"levels\":";
+    auto json = readfile(GetDataPath());
+    if(!json.starts_with(start))
+        json = start + json + "}";
 
-    // each level is stored globally, which I regret
-    for(auto& member : globalDoc.GetObject()) {
-        // add blank level at location
-        std::string id = member.name.GetString();
-        auto& level = id_levels.emplace(id, Level()).first->second;
-        try {
-            level.Deserialize(member.value);
-        } catch (const std::exception& err) {
-            LOG_ERROR("Error reading id %s from data: %s!", id.c_str(), err.what());
-        }
+    try {
+        ReadFromString(json, dataInstance);
+    } catch(const std::exception& e) {
+        LOG_ERROR("Error parsing local data: %s", e.what());
+        std::filesystem::copy_file(GetDataPath(), GetDataPath() + ".bak", std::filesystem::copy_options::overwrite_existing);
     }
 }
 
 void SaveData() {
-    rapidjson::StringBuffer buffer;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-    globalDoc.Accept(writer);
-    std::string_view s = buffer.GetString();
-
-    writefile(GetDataPath(), s);
-}
-
-void SaveLevel(std::string const& id) {
-    auto level = globalDoc.FindMember(id);
-    if(level == globalDoc.MemberEnd())
-        return;
-
-    auto& levelObj = id_levels.find(id)->second;
-    level->value = levelObj.Serialize(globalDoc.GetAllocator());
-
-    SaveData();
+    WriteToFile(GetDataPath(), dataInstance);
 }
 
 void SaveMap(IDifficultyBeatmap* beatmap, bool alwaysOverride) {
-    // get identification info
-    std::string id = ((IPreviewBeatmapLevel*) beatmap->get_level())->get_levelID();
-    std::string characteristic = beatmap->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic()->get_serializedName();
-    int difficulty = beatmap->get_difficulty();
+    auto [id, characteristic, difficulty] = GetInfo(beatmap);
 
     currentTracker.characteristic = characteristic;
     currentTracker.difficulty = difficulty;
 
-    // check if level is already saved
-    if(id_levels.contains(id)) {
-        auto& level = id_levels.find(id)->second;
-        // check if map is already saved
-        Tracker* mapTracker = nullptr;
-        for(auto& map : level.maps) {
-            if(map.characteristic == characteristic && map.difficulty == difficulty)
-                mapTracker = &map;
-        }
+    auto level = GetLevel(id);
+    if(level) {
+        auto [found, map] = GetMap(level, characteristic, difficulty);
         // write if it's not saved or if it should be overridden
-        if(!mapTracker) {
-            level.maps.emplace_back(currentTracker);
-            SaveLevel(id);
-        } else if(mapTracker->score < currentTracker.score || alwaysOverride) {
-            *mapTracker = currentTracker;
-            SaveLevel(id);
-        }
+        if(!found)
+            level->get().maps.emplace_back(currentTracker);
+        else if(map->score < currentTracker.score || alwaysOverride)
+            *map = currentTracker;
     } else {
-        auto& allocator = globalDoc.GetAllocator();
-        // create new level
-        auto& level = id_levels.emplace(id, Level()).first->second;
-        // add map to level
-        level.maps.emplace_back(currentTracker);
-        // add level to document and save
-        globalDoc.AddMember(rapidjson::Value(id, allocator).Move(), level.Serialize(allocator), allocator);
-        SaveData();
+        auto& newLevel = dataInstance.levels.emplace(id, Level()).first->second;
+        newLevel.maps.emplace_back(currentTracker);
     }
+    SaveData();
 }
 
 void LoadMap(IDifficultyBeatmap* beatmap) {
-    // get identification info
-    std::string id = ((IPreviewBeatmapLevel*) beatmap->get_level())->get_levelID();
-    std::string characteristic = beatmap->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic()->get_serializedName();
-    int difficulty = beatmap->get_difficulty();
-
-    if(id_levels.contains(id)) {
-        auto& level = id_levels.find(id)->second;
-        // find map in saved maps
-        Tracker* mapTracker = nullptr;
-        for(auto& map : level.maps) {
-            if(map.characteristic == characteristic && map.difficulty == difficulty)
-                mapTracker = &map;
-        }
-        // write if it's not saved or if it should be overridden
-        if(mapTracker)
-            currentTracker = *mapTracker;
-    }
+    auto [id, characteristic, difficulty] = GetInfo(beatmap);
+    auto level = GetLevel(id);
+    if(!level)
+        return;
+    auto [found, map] = GetMap(level, characteristic, difficulty);
+    if(found)
+        currentTracker = *map;
 }
 
 void DeleteMap(IDifficultyBeatmap* beatmap) {
-    // get identification info
-    std::string id = ((IPreviewBeatmapLevel*) beatmap->get_level())->get_levelID();
-    std::string characteristic = beatmap->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic()->get_serializedName();
-    int difficulty = beatmap->get_difficulty();
-
-    if(!id_levels.contains(id))
+    auto [id, characteristic, difficulty] = GetInfo(beatmap);
+    auto level = GetLevel(id);
+    if(!level)
         return;
-    auto& maps = id_levels.find(id)->second.maps;
-    for(auto iter = maps.begin(); iter != maps.end(); iter++) {
-        if(iter->characteristic == characteristic && iter->difficulty == difficulty) {
-            maps.erase(iter);
-            break;
-        }
-    }
-    SaveLevel(id);
+    auto [found, map] = GetMap(level, characteristic, difficulty);
+    if(!found)
+        return;
+    level->get().maps.erase(map);
+    SaveData();
 }
 
 bool MapSaved(IDifficultyBeatmap* beatmap) {
-    // get identification info
-    std::string id = ((IPreviewBeatmapLevel*) beatmap->get_level())->get_levelID();
-    std::string characteristic = beatmap->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic()->get_serializedName();
-    int difficulty = beatmap->get_difficulty();
-
-    if(!id_levels.contains(id))
+    auto [id, characteristic, difficulty] = GetInfo(beatmap);
+    auto level = GetLevel(id);
+    if(!level)
         return false;
-
-    auto& maps = id_levels.find(id)->second.maps;
-    for(auto& map : maps) {
-        if(map.characteristic == characteristic && map.difficulty == difficulty)
-            return true;
-    }
-    return false;
+    auto [found, map] = GetMap(level, characteristic, difficulty);
+    return found;
 }

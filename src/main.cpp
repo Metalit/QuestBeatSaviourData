@@ -81,11 +81,6 @@ Logger& getLogger() {
     return *logger;
 }
 
-std::string GetConfigPath() {
-    static std::string configPath = Configuration::getConfigFilePath(modInfo);
-    return configPath;
-}
-
 std::string GetDataPath() {
     static std::string dataPath = getDataDir(modInfo) + "data.json";
     return dataPath;

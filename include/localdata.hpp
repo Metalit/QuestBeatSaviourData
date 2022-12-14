@@ -58,6 +58,10 @@ namespace BeatSaviorData {
         )
         std::vector<Tracker> maps{};
     )
+
+    DECLARE_JSON_CLASS(LocalData,
+        MAP_DEFAULT(Level, levels, StringKeyedMap<Level>())
+    )
 }
 
 extern BeatSaviorData::Tracker currentTracker;
