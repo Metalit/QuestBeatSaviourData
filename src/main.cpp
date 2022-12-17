@@ -548,7 +548,7 @@ extern "C" void setup(ModInfo& info) {
         mkpath(getDataDir(modInfo));
 
     if(!fileexists(GetDataPath()))
-        writefile(GetDataPath(), "null");
+        writefile(GetDataPath(), "{\"levels\":{}}");
     LoadData();
 }
 

@@ -45,10 +45,15 @@ namespace BeatSaviorData {
     DECLARE_JSON_CLASS(Level,
         DESERIALIZE_ACTION(WhyDidIMakeThingsNotHaveNames,
             if(!jsonValue.IsArray())
-                return;
+                throw JSONException("level was not an array");
             for(auto& item : jsonValue.GetArray()) {
                 self->maps.emplace_back(Tracker());
-                self->maps.back().Deserialize(item);
+                try {
+                    self->maps.back().Deserialize(item);
+                } catch(const std::exception& e) {
+                    LOG_ERROR("Error parsing map: %s", e.what());
+                    self->maps.pop_back();
+                }
             }
         )
         SERIALIZE_ACTION(WhyDidIMakeThingsNotHaveNames,
