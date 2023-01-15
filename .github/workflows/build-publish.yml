@@ -34,7 +34,7 @@ jobs:
           workflow_token: ${{ secrets.GITHUB_TOKEN }}
 
           restore: true
-          cache: true
+          cache: false
 
           publish: false # qpm package
 
