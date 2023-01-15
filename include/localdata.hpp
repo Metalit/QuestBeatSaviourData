@@ -65,7 +65,7 @@ namespace BeatSaviorData {
     )
 
     DECLARE_JSON_CLASS(LocalData,
-        MAP_DEFAULT(Level, levels, StringKeyedMap<Level>())
+        MAP_DEFAULT(Level, levels, {})
     )
 }
 
