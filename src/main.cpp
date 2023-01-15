@@ -39,7 +39,7 @@
 #include "GlobalNamespace/SinglePlayerLevelSelectionFlowCoordinator.hpp"
 #include "GlobalNamespace/MenuTransitionsHelper.hpp"
 #include "GlobalNamespace/PlatformLeaderboardViewController.hpp"
-#include "GlobalNamespace/LeaderboardsModel.hpp"
+#include "GlobalNamespace/LocalLeaderboardsIdModel.hpp"
 #include "GlobalNamespace/LocalLeaderboardViewController.hpp"
 #include "GlobalNamespace/PauseMenuManager.hpp"
 #include "GlobalNamespace/NoteCutInfo.hpp"
@@ -217,7 +217,7 @@ MAKE_HOOK_MATCH(ProcessResultsSolo, &SoloFreePlayFlowCoordinator::ProcessLevelCo
 MAKE_HOOK_MATCH(ProcessResultsParty, &PartyFreePlayFlowCoordinator::ProcessLevelCompletionResultsAfterLevelDidFinish, void, PartyFreePlayFlowCoordinator* self, LevelCompletionResults* levelCompletionResults, IReadonlyBeatmapData* transformedBeatmapData, IDifficultyBeatmap* difficultyBeatmap, GameplayModifiers* gameplayModifiers, bool practice) {
     ProcessResultsParty(self, levelCompletionResults, transformedBeatmapData, difficultyBeatmap, gameplayModifiers, practice);
     // don't show if the enter name view will be displayed
-    if(self->WillScoreGoToLeaderboard(levelCompletionResults, LeaderboardsModel::GetLeaderboardID(difficultyBeatmap), practice)) {
+    if(self->WillScoreGoToLeaderboard(levelCompletionResults, LocalLeaderboardsIdModel::GetLocalLeaderboardID(difficultyBeatmap), practice)) {
         lastBeatmap = difficultyBeatmap;
         lastCompletionResults = levelCompletionResults;
     } else {
